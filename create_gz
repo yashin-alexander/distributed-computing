@@ -1,0 +1,12 @@
+#!/bin/bash
+
+rm interprocess-communication-lib/a.out
+rm interprocess-communication-lib/events.log
+rm interprocess-communication-lib/pipes.log
+
+cd interprocess-communication-lib
+mkdir pa1
+cp * pa1/
+tar cfJ pa1.tar.xz pa1
+rm -r pa1
+mv pa1.tar.xz ../
