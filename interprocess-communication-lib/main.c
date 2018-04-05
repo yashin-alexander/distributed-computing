@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #include "pa1.h"
 #include "ipc.h"
@@ -32,56 +34,6 @@ typedef struct{
 } NodesContainer;
 
 
-
-int send(void * self, local_id dst, const Message * msg) {
-    Node *node = (Node*) self;
-
-    int wd_fd = node->connections[dst].in;
-    int write_count = sizeof(MessageHeader) + (*msg).s_header.s_payload_len;
-    write(wd_fd, msg, write_count);
-
-    return 0;
-}
-
-int receive(void * self, local_id from, Message * msg) {
-    Node * node = (Node *) self;
-    int pipe = node->connections[from].out;
-
-    logging_pipe_read(pipes_log_fd, from, pipe);
-
-    int symbols_count = sizeof(MessageHeader) + (*msg).s_header.s_payload_len;
-    if (read(pipe, msg, symbols_count) < 0) {
-        return -1;
-    }
-    return 0;
-}
-
-int send_multicast(void * self, const Message * msg) {
-    Node *node = (Node*) self;
-    for (int i = 1; i < node->connections_count; i++) {
-        if (i != node->id) {
-            if (send(self, i, msg) != 0) {
-                return -1;
-            }
-        }
-    }
-    return 0;
-}
-
-int receive_any(void *self, Message *msg) {
-    Node *node = (Node*) self;
-
-    while(1) {
-        for (int i = 1; i < node->connections_count; i++) {
-            if (i != node->id) {
-                if (receive(self, i, msg) == 0) {
-                    return i;
-                }
-            }
-        }
-    }
-}
-
 void mainproc_lifecycle(void *self) {}
 
 Message create_message_body() {
@@ -100,35 +52,81 @@ Message create_message(int id) {
     return msg;
 }
 
-void worker_pre_synchronize(Node self) {
-    Message msg = create_message(self.id);
-    sprintf(msg.s_payload, log_started_fmt, self.id, getpid(), getppid());
 
+int send(void * self, local_id dst, const Message * msg) {
+    Node *node = (Node *) self;
+    int wd_fd = node->connections[dst].in;
+    int write_count = sizeof(MessageHeader) + (*msg).s_header.s_payload_len;
+    write(wd_fd, msg, write_count);
+    logging_pipe_write(pipes_log_fd, node->id, wd_fd);
+
+    return 0;
+}
+
+int send_multicast(void * self, const Message * msg) {
+    Node *node = (Node*) self;
+    for (int i = 0; i < node->connections_count; i++) {
+        if (i != node->id) {
+            if (send(self, i, msg) != 0) {
+                return -1;
+            }
+        }
+    }
+    return 0;
+}
+
+int receive(void * self, local_id from, Message * msg){
+    Node * node = (Node *) self;
+    int pipe = node->connections[from].out;
+
+    int symbols_count = sizeof(MessageHeader) + (*msg).s_header.s_payload_len;
+    if (read(pipe, msg, symbols_count) < 0)
+        return -1;
+
+    logging_pipe_read(pipes_log_fd, from, pipe);
+    return 0;
+}
+
+int receive_any(void *self, Message *msg){
+    Node *node = (Node*) self;
+
+    while(1){
+        for (int i = 1; i < node->connections_count; i++){
+            if (i != node->id){
+                if (receive(self, i, msg) == 0){
+                    return i;
+                }
+            }
+        }
+    }
+}
+
+void worker_pre_synchronize(Node self) {
     logging_start(events_log_fd, self.id);
 
-    for (int i = 1; i < self.connections_count; i++) {
-        send_multicast(&self, &msg);
-    }
-    for (int i = 1; i < self.connections_count; i++) {
+    Message msg = create_message(self.id);
+    int len = sprintf(msg.s_payload, log_started_fmt, self.id, getpid(), getppid());
+    msg.s_header.s_payload_len = len;
+
+    send_multicast(&self, &msg);
+
+    for (int i = 2; i < self.connections_count; i++) {
         receive_any(&self, &msg);
     }
     logging_received_all_started(events_log_fd ,self.id);
 }
 
-void worker_payload(Node self) {
+void worker_payload(Node self) {}
 
-}
-
-void worker_post_synchronize(Node self) {
+void worker_post_synchronize(Node self){
     Message msg = create_message(self.id);
     sprintf(msg.s_payload, log_done_fmt, self.id);
 
     logging_done(events_log_fd, self.id);
 
-    for (int i = 1; i < self.connections_count; i++) {
-        send_multicast(&self, &msg);
-    }
-    for (int i = 1; i < self.connections_count; i++) {
+    send_multicast(&self, &msg);
+
+    for (int i = 2; i < self.connections_count; i++){
         receive_any(&self, &msg);
     }
     logging_received_all_done(events_log_fd ,self.id);
@@ -138,8 +136,13 @@ void worker_lifecycle(void *self) {
     Node *node = (Node*) self;
 
     worker_pre_synchronize(*node);
-//    worker_payload(*node);
-//    worker_post_synchronize(*node);
+    worker_payload(*node);
+    worker_post_synchronize(*node);
+}
+
+void set_noblock_flag(int fd) {
+    int flags = fcntl(fd, F_GETFL);
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
 void initialize_pipes(NodesContainer container, int index) {
@@ -148,6 +151,8 @@ void initialize_pipes(NodesContainer container, int index) {
         if (i != index) {
             int fd[2];
             pipe(fd);
+            set_noblock_flag(fd[0]);
+            set_noblock_flag(fd[1]);
 
             node.connections[i].out = fd[0];
             container.nodes[i].connections[index].in = fd[1];
@@ -178,12 +183,19 @@ NodesContainer initialize_container(int units_number) {
     for (int i = 1; i < units_number; i++)
         container.nodes[i] = create_node(i, worker_lifecycle, units_number);
 
-    for (int i = 1; i < units_number; i++) {
+    for (int i = 0; i < units_number; i++) {
         initialize_pipes(container, i);
     }
 
     return container;
 }
+
+void receive_children_messages(NodesContainer container) {
+    for (uint8_t i = 1; i <  container.units_number; i++) {
+        wait(NULL);
+    }
+}
+
 
 void run_worker_node(Node node) {
     pid_t pid = fork();
@@ -198,6 +210,10 @@ void run_worker_node(Node node) {
 void run_container(NodesContainer container) {
     for (int i = 1; i < container.units_number; i++)
         run_worker_node(container.nodes[i]);
+
+    run_worker_node(container.nodes[PARENT_ID]);
+
+    receive_children_messages(container);
 }
 
 int main(int argc, char **argv) {

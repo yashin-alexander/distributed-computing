@@ -66,6 +66,7 @@ void logging_pipe_read(int logging_fd, int node_index, int pipe){
 
     msg_len = sprintf(msg, "Node %d read from %d pipe\n", node_index, pipe);
     write(logging_fd, msg, msg_len);
+//    write(STDOUT_FILENO, msg, msg_len);
 }
 
 void logging_pipe_write(int logging_fd, int node_index, int pipe){
@@ -74,4 +75,5 @@ void logging_pipe_write(int logging_fd, int node_index, int pipe){
 
     msg_len = sprintf(msg, "Node %d write to %d pipe\n", node_index, pipe);
     write(logging_fd, msg, msg_len);
+//    write(STDOUT_FILENO, msg, msg_len);
 }

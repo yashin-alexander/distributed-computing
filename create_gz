@@ -7,6 +7,6 @@ rm interprocess-communication-lib/pipes.log
 cd interprocess-communication-lib
 mkdir pa1
 cp * pa1/
-tar cfJ pa1.tar.xz pa1
+tar -czvf pa1.tar.gz pa1
 rm -r pa1
-mv pa1.tar.xz ../
+mv pa1.tar.gz ../
