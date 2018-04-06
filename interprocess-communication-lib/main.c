@@ -36,6 +36,7 @@ Message create_message(char *payload, uint16_t payload_len, MessageType type, ti
     return msg;
 }
 
+
 void set_descriptor_non_block(int fd){
     int flags = fcntl(fd, F_GETFL);
     fcntl(fd, F_SETFL, flags | O_NONBLOCK);
@@ -89,14 +90,6 @@ void close_extra_connections(const NodesContainer *container, local_id node_id){
     }
 }
 
-int c_send(Connection *connection, const Message *msg){
-    int write_descriptor = (*connection).in;
-
-    int write_count = sizeof(MessageHeader) + (*msg).s_header.s_payload_len;
-    write(write_descriptor, msg, write_count);
-
-    return 0;
-}
 
 int c_receive(Connection *connection, Message *msg){
     int read_descriptor = (*connection).out;
@@ -108,14 +101,14 @@ int c_receive(Connection *connection, Message *msg){
     return 0;
 }
 
-void init_node(const NodesContainer *container, local_id node_id, NodeLifecycle job){
+void init_node(const NodesContainer *container, local_id node_id, NodeLifecycle lifecycle){
     Node *node = &( (*container).nodes[node_id]);
 
     (*node).id = node_id;
     (*node).connection_count =  (*container).node_count;
     (*node).connections = (Connection*) calloc((*node).connection_count, sizeof(Connection));
 
-    (*node).lifecycle = job;
+    (*node).lifecycle = lifecycle;
 }
 
 int run_node(const NodesContainer *container, local_id node_id){
@@ -134,21 +127,22 @@ int run_node(const NodesContainer *container, local_id node_id){
     return pid;
 }
 
-int send(void * self, local_id containert, const Message * msg){
-    Node *send_node = (Node*) self;
-    Connection *c = &(send_node->connections[containert]);
+int send(void * self, local_id dst, const Message * msg){
+    Node *node = (Node *) self;
+    log_pipe_write_event(node->id, node->connections[dst].in);
+    int wd_fd = node->connections[dst].in;
+    int write_count = sizeof(MessageHeader) + (*msg).s_header.s_payload_len;
+    write(wd_fd, msg, write_count);
 
-    log_pipe_write_event(send_node->id, (*c).in);
-    return c_send(c, msg);
+    return 0;
 }
 
 int send_multicast(void * self, const Message * msg){
     Node *send_node = (Node*) self;
     for (int i = 0; i < send_node->connection_count; i++){
         if (i != send_node->id){
-            if (send(self, i, msg) != 0){
+            if (send(self, i, msg) != 0)
                 return -1;
-            }
         }
     }
     return 0;
@@ -178,25 +172,25 @@ void init_main_node(const NodesContainer *container, NodeLifecycle main_NodeLife
     init_node(container, PARENT_ID, main_NodeLifecycle);
 }
 
-void init_all_child_nodes(const NodesContainer *container, NodeLifecycle job){
+void init_all_worker_nodes(const NodesContainer *container, NodeLifecycle lifecycle){
     for (int i = 1; i <  (*container).node_count; i++){
-        init_node(container, i, job);
+        init_node(container, i, lifecycle);
     }
 }
 
 
-NodesContainer create_distributed_system(uint8_t node_count, NodeLifecycle main_NodeLifecycle, NodeLifecycle n_job){
+NodesContainer create_distributed_system(uint8_t node_count, NodeLifecycle main_NodeLifecycle, NodeLifecycle n_lifecycle){
     NodesContainer container;
     container.node_count = node_count;
     container.nodes = (Node*) calloc(node_count, sizeof(Node));
 
     init_main_node(&container, main_NodeLifecycle);
-    init_all_child_nodes(&container, n_job);
+    init_all_worker_nodes(&container, n_lifecycle);
     establish_all_connections(&container);
     return container;
 }
 
-void run_all_child_nodes(const NodesContainer *container){
+void run_all_worker_nodes(const NodesContainer *container){
     for (uint8_t i = 1; i <  (*container).node_count; i++){
         run_node(container, i);
     }
@@ -208,43 +202,56 @@ void run_main_node(const NodesContainer *container){
     main_node->lifecycle(main_node);
 }
 
-void wait_for_all_child_nodes_to_terminate(const NodesContainer *container){
+void wait_for_all_worker_nodes_to_terminate(const NodesContainer *container){
     for (uint8_t i = 1; i <  (*container).node_count; i++){
         wait(NULL);
     }
 }
 
-void run_distributed_system(const NodesContainer *container){
-    run_all_child_nodes(container);
-    run_main_node(container);
-    wait_for_all_child_nodes_to_terminate(container);
+void run_distributed_system(const NodesContainer container){
+    run_all_worker_nodes(&container);
+    run_main_node(&container);
+    wait_for_all_worker_nodes_to_terminate(&container);
 }
 
-void child_job(void *self){
+
+void worker_pre_synchronize(Node node){
+
+    log_started_event(node.id);
+    Message msg = create_message("", 0, STARTED, 0);
+    int len = sprintf(msg.s_payload, log_started_fmt, node.id, getpid(), getppid());
+    msg.s_header.s_payload_len = len;
+    send_multicast(&node, &msg);
+
+    for (uint8_t i = 2; i < node.connection_count; i++){
+        receive_any(&node, &msg);
+    }
+    log_received_all_started_event(node.id);
+}
+
+void worker_payload(Node self){}
+
+void worker_post_synchronize(Node node){
+
+    log_done_event(node.id);
+    Message msg = create_message("", 0, DONE, 0);
+    int len = sprintf(msg.s_payload, log_done_fmt, node.id);
+    msg.s_header.s_payload_len = len;
+    send_multicast(&node, &msg);
+
+    for (uint8_t i = 2; i < node.connection_count; i++){
+        Message m;
+        receive_any(&node, &m);
+    }
+    log_received_all_done_event(node.id);
+}
+
+void worker_lifecycle(void *self){
     Node *node = (Node*) self;
 
-    log_started_event((*node).id);
-    Message msg = create_message("", 0, STARTED, 0);
-    int len = sprintf(msg.s_payload, log_started_fmt, (*node).id, getpid(), getppid());
-    msg.s_header.s_payload_len = len;
-    send_multicast(self, &msg);
-
-    for (uint8_t i = 2; i < (*node).connection_count; i++){
-        receive_any(self, &msg);
-    }
-    log_received_all_started_event((*node).id);
-
-    log_done_event((*node).id);
-    msg = create_message("", 0, DONE, 0);
-    len = sprintf(msg.s_payload, log_done_fmt, (*node).id);
-    msg.s_header.s_payload_len = len;
-    send_multicast(self, &msg);
-
-    for (uint8_t i = 2; i < (*node).connection_count; i++){
-        Message m;
-        receive_any(self, &m);
-    }
-    log_received_all_done_event((*node).id);
+    worker_pre_synchronize(*node);
+    worker_payload(*node);
+    worker_post_synchronize(*node);
 }
 
 void main_NodeLifecycle(void *self){}
@@ -253,7 +260,7 @@ int main(int argc, char *argv[]){
     int node_count = atoi(argv[2]) + 1;
     create_log_files();
 
-    NodesContainer container = create_distributed_system(node_count, main_NodeLifecycle, child_job);
-    run_distributed_system(&container);
+    NodesContainer container = create_distributed_system(node_count, main_NodeLifecycle, worker_lifecycle);
+    run_distributed_system(container);
     return 0;
 }

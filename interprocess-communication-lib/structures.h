@@ -18,6 +18,6 @@ typedef struct{
 typedef struct{
     uint8_t node_count;
     Node *nodes;
-} ;
+} NodesContainer;
 
 #endif
