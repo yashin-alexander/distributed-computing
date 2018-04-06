@@ -1,30 +1,23 @@
 #ifndef __CONNECTIONS__H
 #define __CONNECTIONS__H
 
-typedef void (*node_job)(void*);
+typedef void (*NodeLifecycle)(void*);
 
-typedef struct {
-
-    int rd;
-    int wd;
-
+typedef struct{
+    int out;
+    int in;
 } Connection;
 
-typedef struct {
-
+typedef struct{
     local_id id;
-    node_job job;
-
+    NodeLifecycle lifecycle;
     uint8_t connection_count;
-    Connection *connections;
-
+    Connection * connections;
 } Node;
 
-typedef struct {
-
+typedef struct{
     uint8_t node_count;
     Node *nodes;
-
-} DistributedSystem;
+} ;
 
 #endif
