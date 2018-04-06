@@ -2,18 +2,21 @@
 #define __LOGGING__H
 
 
+#include "ipc.h"
+
 int events_log_fd;
 int pipes_log_fd;
 
-void create_log_files();
+int get_pipes_log_descriptor();
+void log_pipe_event(char *fmt, local_id node_id, int fd);
+void log_pipe_read_event(local_id node_id, int fd);
+void log_pipe_write_event(local_id node_id, int fd);
 
-void logging_start(int logging_fd, int id);
-void logging_received_all_started(int logging_fd, int id);
-void logging_received_all_done(int logging_fd, int id);
-void logging_done(int logging_fd, int id);
-
-void logging_pipes_open(int logging_fd, int from_index, int to_index, int pipe_in, int pipe_out);
-void logging_pipe_read(int logging_fd, int node_index, int pipe);
-void logging_pipe_write(int logging_fd, int node_index, int pipe);
+int get_events_log_descriptor();
+void log_event(char *formated_message, int message_len);
+void log_started_event(local_id node_id);
+void log_received_all_started_event(local_id node_id);
+void log_done_event(local_id node_id);
+void log_received_all_done_event(local_id node_id);
 
 #endif

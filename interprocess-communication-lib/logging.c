@@ -7,73 +7,63 @@
 
 #include "logging.h"
 
-
-void create_log_files(){
-    pipes_log_fd = open(pipes_log, O_CREAT | O_APPEND | O_WRONLY | O_TRUNC, 0777);
-    events_log_fd = open(events_log, O_CREAT | O_APPEND | O_WRONLY | O_TRUNC, 0777);
+int get_pipes_log_descriptor() {
+    static int pipes_log_descriptor = -1;
+    if (pipes_log_descriptor < 0) {
+        pipes_log_descriptor = open(pipes_log, O_CREAT | O_APPEND | O_WRONLY | O_TRUNC, 0777);
+    }
+    return pipes_log_descriptor;
 }
 
-void logging_start(int logging_fd, int id){
-    char msg[64];
-    int msg_len;
+void log_pipe_event(char *fmt, local_id node_id, int fd) {
+    char formated_message[64];
+    int len = sprintf(formated_message, fmt, node_id, fd);
 
-    msg_len = sprintf(msg, log_started_fmt, id, getpid(), getppid());
-    write(logging_fd, msg, msg_len);
-    write(STDOUT_FILENO, msg, msg_len);
+    puts(formated_message);
+    write(get_pipes_log_descriptor(), formated_message, len);
 }
 
-void logging_received_all_started(int logging_fd, int id){
-    char msg[64];
-    int msg_len;
-
-    msg_len = sprintf(msg, log_received_all_started_fmt, id);
-    write(logging_fd, msg, msg_len);
-    write(STDOUT_FILENO, msg, msg_len);
+void log_pipe_read_event(local_id node_id, int fd) {
+    log_pipe_event("Node %d is reading from %d file descriptor\n", node_id, fd);
 }
 
-
-void logging_received_all_done(int logging_fd, int id){
-    char msg[64];
-    int msg_len;
-
-    msg_len = sprintf(msg, log_received_all_done_fmt, id);
-    write(logging_fd, msg, msg_len);
-    write(STDOUT_FILENO, msg, msg_len);
+void log_pipe_write_event(local_id node_id, int fd) {
+    log_pipe_event("Node %d is writing to %d file descriptor\n", node_id, fd);
 }
 
-
-void logging_done(int logging_fd, int id){
-    char msg[64];
-    int msg_len;
-
-    msg_len = sprintf(msg, log_done_fmt, id);
-    write(logging_fd, msg, msg_len);
-    write(STDOUT_FILENO, msg, msg_len);
+int get_events_log_descriptor() {
+    static int events_log_descriptor = -1;
+    if (events_log_descriptor < 0) {
+        events_log_descriptor = open(events_log, O_CREAT | O_APPEND | O_WRONLY | O_TRUNC, 0777);
+    }
+    return events_log_descriptor;
 }
 
-void logging_pipes_open(int logging_fd, int from_index, int to_index, int pipe_in, int pipe_out){
-    char msg[64];
-    int msg_len;
-
-    msg_len = sprintf(msg, "Pipe from %d to %d created. in=%d out=%d\n",
-                      from_index, to_index, pipe_in, pipe_out);
-    write(logging_fd, msg, msg_len);
+void log_event(char *formated_message, int message_len) {
+    puts(formated_message);
+    write(get_events_log_descriptor(), formated_message, message_len);
 }
 
-void logging_pipe_read(int logging_fd, int node_index, int pipe){
-    char msg[64];
-    int msg_len;
-
-    msg_len = sprintf(msg, "Node %d read from %d pipe\n", node_index, pipe);
-    write(logging_fd, msg, msg_len);
-//    write(STDOUT_FILENO, msg, msg_len);
+void log_started_event(local_id node_id) {
+    char buffer[64];
+    int len = sprintf(buffer, log_started_fmt, node_id, getpid(), getppid());
+    log_event(buffer, len);
 }
 
-void logging_pipe_write(int logging_fd, int node_index, int pipe){
-    char msg[64];
-    int msg_len;
+void log_received_all_started_event(local_id node_id) {
+    char buffer[64];
+    int len = sprintf(buffer, log_received_all_started_fmt, node_id);
+    log_event(buffer, len);
+}
 
-    msg_len = sprintf(msg, "Node %d write to %d pipe\n", node_index, pipe);
-    write(logging_fd, msg, msg_len);
-//    write(STDOUT_FILENO, msg, msg_len);
+void log_done_event(local_id node_id) {
+    char buffer[64];
+    int len = sprintf(buffer, log_done_fmt, node_id);
+    log_event(buffer, len);
+}
+
+void log_received_all_done_event(local_id node_id) {
+    char buffer[64];
+    int len = sprintf(buffer, log_received_all_done_fmt, node_id);
+    log_event(buffer, len);
 }

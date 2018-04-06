@@ -1,72 +1,151 @@
-#include <stdint.h>
-#include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <stdint.h>
+#include <string.h>
+#include <stdio.h>
 #include <fcntl.h>
-#include <sys/types.h>
+#include <errno.h>
 #include <sys/wait.h>
 
-#include "pa1.h"
 #include "ipc.h"
 #include "common.h"
+#include "pa1.h"
 
 #include "logging.h"
-
-struct Node;
-typedef void (*NodeLifecycle)(void *);
-
-typedef struct{
-    int in;
-    int out;
-} Connection;
-
-typedef struct{
-    local_id id;
-    NodeLifecycle lifecycle;
-    int connections_count;
-    Connection * connections;
-} Node;
-
-typedef struct{
-    int units_number;
-    Node *nodes;
-} NodesContainer;
+#include "structures.h"
 
 
-void mainproc_lifecycle(void *self) {}
+MessageHeader create_message_header(uint16_t payload_len, MessageType type, timestamp_t local_time) {
+    MessageHeader header = {
+            .s_magic= MESSAGE_MAGIC,
+            .s_payload_len = payload_len,
+            .s_type = type,
+            .s_local_time  = local_time
+    };
 
-Message create_message_body() {
+    return header;
+}
+
+Message create_message(char *payload, uint16_t payload_len, MessageType type, timestamp_t local_time) {
     Message msg;
-    msg.s_header.s_magic = MESSAGE_MAGIC;
-    msg.s_header.s_local_time = 0;
+    msg.s_header = create_message_header(payload_len, type, local_time);
+    for (uint16_t i = 0; i < payload_len; i++) {
+        msg.s_payload[i] = payload[i];
+    }
 
     return msg;
 }
 
-Message create_message(int id) {
-    Message msg = create_message_body();
-    sprintf(msg.s_payload, log_started_fmt, id, getpid(), getppid());
-    msg.s_header.s_type = STARTED;
-    msg.s_header.s_payload_len = strlen(msg.s_payload);
-    return msg;
+void set_descriptor_non_block(int fd) {
+    int flags = fcntl(fd, F_GETFL);
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
+void create_non_block_pipe(int *fd) {
+    pipe(fd);
+    set_descriptor_non_block(fd[0]);
+    set_descriptor_non_block(fd[1]);
+}
 
-int send(void * self, local_id dst, const Message * msg) {
-    Node *node = (Node *) self;
-    int wd_fd = node->connections[dst].in;
+void establish_unidirectional_connecton(Node *send_node, Node *receive_node) {
+    int fd[2];
+    create_non_block_pipe(fd);
+
+    receive_node->connections[send_node->id].rd = fd[0];
+    send_node->connections[receive_node->id].wd = fd[1];
+}
+
+void establish_connection(Node *a, Node *b) {
+    establish_unidirectional_connecton(a, b);
+    establish_unidirectional_connecton(b, a);
+}
+
+void establish_all_connections(const DistributedSystem *ds) {
+    for (uint8_t i = 0; i <  (*ds).node_count; i++) {
+        for (uint8_t j = i + 1; j <  (*ds).node_count; j++) {
+            establish_connection(&( (*ds).nodes[i]), &( (*ds).nodes[j]));
+        }
+    }
+}
+
+void close_connection(Connection *connection) {
+    close((*connection).rd);
+    close((*connection).wd);
+}
+
+void close_extra_connections(const DistributedSystem *ds, local_id node_id) {
+    for (uint8_t i = 0; i <  (*ds).node_count; i++) {
+        if (i != node_id) {
+            for (uint8_t j = 0; j <  (*ds).node_count; j++) {
+                if (i != j && j != node_id) {
+                    close_connection(&( (*ds).nodes[i].connections[j]));
+                    close_connection(&( (*ds).nodes[j].connections[i]));
+                }
+                else if (j == node_id) {
+                    close_connection(&( (*ds).nodes[i].connections[j]));
+                }
+            }
+        }
+    }
+}
+
+int c_send(Connection *connection, const Message *msg) {
+    int write_descriptor = (*connection).wd;
+
     int write_count = sizeof(MessageHeader) + (*msg).s_header.s_payload_len;
-    write(wd_fd, msg, write_count);
-    logging_pipe_write(pipes_log_fd, node->id, wd_fd);
+    write(write_descriptor, msg, write_count);
 
     return 0;
 }
 
+int c_receive(Connection *connection, Message *msg) {
+    int read_descriptor = (*connection).rd;
+
+    int read_count = sizeof(MessageHeader) + (*msg).s_header.s_payload_len;
+    if (read(read_descriptor, msg, read_count) < 0) {
+        return -1;
+    }
+    return 0;
+}
+
+void init_node(const DistributedSystem *ds, local_id node_id, node_job job) {
+    Node *node = &( (*ds).nodes[node_id]);
+
+    (*node).id = node_id;
+    (*node).connection_count =  (*ds).node_count;
+    (*node).connections = (Connection*) calloc((*node).connection_count, sizeof(Connection));
+
+    (*node).job = job;
+}
+
+int run_node(const DistributedSystem *ds, local_id node_id) {
+    pid_t pid = fork();
+    if (pid < 0) {
+        return -1;
+    }
+    else if (pid == 0) {
+        close_extra_connections(ds, node_id);
+
+        Node *node = &( (*ds).nodes[node_id]);
+        (*node).job(node);
+
+        _exit(0);
+    }
+    return pid;
+}
+
+int send(void * self, local_id dst, const Message * msg) {
+    Node *send_node = (Node*) self;
+    Connection *c = &(send_node->connections[dst]);
+
+    log_pipe_write_event(send_node->id, (*c).wd);
+    return c_send(c, msg);
+}
+
 int send_multicast(void * self, const Message * msg) {
-    Node *node = (Node*) self;
-    for (int i = 0; i < node->connections_count; i++) {
-        if (i != node->id) {
+    Node *send_node = (Node*) self;
+    for (int i = 0; i < send_node->connection_count; i++) {
+        if (i != send_node->id) {
             if (send(self, i, msg) != 0) {
                 return -1;
             }
@@ -75,153 +154,109 @@ int send_multicast(void * self, const Message * msg) {
     return 0;
 }
 
-int receive(void * self, local_id from, Message * msg){
-    Node * node = (Node *) self;
-    int pipe = node->connections[from].out;
+int receive(void * self, local_id from, Message * msg) {
+    Node *receive_node = (Node*) self;
+    Connection *c = &(receive_node->connections[from]);
 
-    int symbols_count = sizeof(MessageHeader) + (*msg).s_header.s_payload_len;
-    if (read(pipe, msg, symbols_count) < 0)
-        return -1;
-
-    logging_pipe_read(pipes_log_fd, from, pipe);
-    return 0;
+    log_pipe_read_event(receive_node->id, (*c).rd);
+    return c_receive(c, msg);
 }
 
-int receive_any(void *self, Message *msg){
-    Node *node = (Node*) self;
-
-    while(1){
-        for (int i = 1; i < node->connections_count; i++){
-            if (i != node->id){
-                if (receive(self, i, msg) == 0){
+int receive_any(void * self, Message * msg) {
+    Node *receive_node = (Node*) self;
+    while(1) {
+        for (int i = 0; i < receive_node->connection_count; i++) {
+            if (i != receive_node->id) {
+                if (receive(self, i, msg) == 0)
                     return i;
-                }
             }
         }
     }
 }
 
-void worker_pre_synchronize(Node self) {
-    logging_start(events_log_fd, self.id);
-
-    Message msg = create_message(self.id);
-    int len = sprintf(msg.s_payload, log_started_fmt, self.id, getpid(), getppid());
-    msg.s_header.s_payload_len = len;
-
-    send_multicast(&self, &msg);
-
-    for (int i = 2; i < self.connections_count; i++) {
-        receive_any(&self, &msg);
-    }
-    logging_received_all_started(events_log_fd ,self.id);
+void init_main_node(const DistributedSystem *ds, node_job main_node_job) {
+    init_node(ds, PARENT_ID, main_node_job);
 }
 
-void worker_payload(Node self) {}
-
-void worker_post_synchronize(Node self){
-    Message msg = create_message(self.id);
-    sprintf(msg.s_payload, log_done_fmt, self.id);
-
-    logging_done(events_log_fd, self.id);
-
-    send_multicast(&self, &msg);
-
-    for (int i = 2; i < self.connections_count; i++){
-        receive_any(&self, &msg);
-    }
-    logging_received_all_done(events_log_fd ,self.id);
-}
-
-void worker_lifecycle(void *self) {
-    Node *node = (Node*) self;
-
-    worker_pre_synchronize(*node);
-    worker_payload(*node);
-    worker_post_synchronize(*node);
-}
-
-void set_noblock_flag(int fd) {
-    int flags = fcntl(fd, F_GETFL);
-    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-}
-
-void initialize_pipes(NodesContainer container, int index) {
-    Node node = container.nodes[index];
-    for (int i = 1; i < container.units_number; i++) {
-        if (i != index) {
-            int fd[2];
-            pipe(fd);
-            set_noblock_flag(fd[0]);
-            set_noblock_flag(fd[1]);
-
-            node.connections[i].out = fd[0];
-            container.nodes[i].connections[index].in = fd[1];
-
-            logging_pipes_open(pipes_log_fd, index, i, fd[0], fd[1]);
-        }
+void init_all_child_nodes(const DistributedSystem *ds, node_job job) {
+    for (int i = 1; i <  (*ds).node_count; i++) {
+        init_node(ds, i, job);
     }
 }
 
-Node create_node(local_id id, NodeLifecycle lifecycle, int units_number) {
-    Node node;
-    node.id = id;
-    node.lifecycle = lifecycle;
-    node.connections = (Connection *) calloc(units_number, sizeof(Connection));
-    node.connections_count = units_number;
+void init_distirbuted_system(DistributedSystem *ds, uint8_t node_count, node_job main_node_job, node_job n_job) {
+    (*ds).node_count = node_count;
+    (*ds).nodes = (Node*) calloc(node_count, sizeof(Node));
 
-    return node;
+    init_main_node(ds, main_node_job);
+    init_all_child_nodes(ds, n_job);
+    establish_all_connections(ds);
 }
 
-NodesContainer initialize_container(int units_number) {
-    NodesContainer container;
-    container.units_number = units_number;
+DistributedSystem create_distributed_system(uint8_t node_count, node_job main_node_job, node_job n_job) {
+    DistributedSystem ds;
+    init_distirbuted_system(&ds, node_count, main_node_job, n_job);
+    return ds;
+}
 
-    container.nodes = (Node *) calloc(units_number, sizeof(Node));
-    Node node = create_node(PARENT_ID, mainproc_lifecycle, units_number);
-    container.nodes[PARENT_ID] = node;
-
-    for (int i = 1; i < units_number; i++)
-        container.nodes[i] = create_node(i, worker_lifecycle, units_number);
-
-    for (int i = 0; i < units_number; i++) {
-        initialize_pipes(container, i);
+void run_all_child_nodes(const DistributedSystem *ds) {
+    for (uint8_t i = 1; i <  (*ds).node_count; i++) {
+        run_node(ds, i);
     }
-
-    return container;
 }
 
-void receive_children_messages(NodesContainer container) {
-    for (uint8_t i = 1; i <  container.units_number; i++) {
+void run_main_node(const DistributedSystem *ds) {
+    close_extra_connections(ds, PARENT_ID);
+    Node *main_node = &( (*ds).nodes[PARENT_ID]);
+    main_node->job(main_node);
+}
+
+void wait_for_all_child_nodes_to_terminate(const DistributedSystem *ds) {
+    for (uint8_t i = 1; i <  (*ds).node_count; i++) {
         wait(NULL);
     }
 }
 
+void run_distributed_system(const DistributedSystem *ds) {
+    run_all_child_nodes(ds);
+    run_main_node(ds);
+    wait_for_all_child_nodes_to_terminate(ds);
+}
 
-void run_worker_node(Node node) {
-    pid_t pid = fork();
-    if (pid < 0)
-        return;
-    else if (pid == 0) {
-        node.lifecycle(&node);
-        _exit(0);
+void child_job(void *self) {
+    Node *node = (Node*) self;
+
+    log_started_event((*node).id);
+    Message msg = create_message("", 0, STARTED, 0);
+    int len = sprintf(msg.s_payload, log_started_fmt, (*node).id, getpid(), getppid());
+    msg.s_header.s_payload_len = len;
+    send_multicast(self, &msg);
+
+    for (uint8_t i = 2; i < (*node).connection_count; i++) {
+        receive_any(self, &msg);
     }
+    log_received_all_started_event((*node).id);
+
+    log_done_event((*node).id);
+    msg = create_message("", 0, DONE, 0);
+    len = sprintf(msg.s_payload, log_done_fmt, (*node).id);
+    msg.s_header.s_payload_len = len;
+    send_multicast(self, &msg);
+
+    for (uint8_t i = 2; i < (*node).connection_count; i++) {
+        Message m;
+        receive_any(self, &m);
+    }
+    log_received_all_done_event((*node).id);
 }
 
-void run_container(NodesContainer container) {
-    for (int i = 1; i < container.units_number; i++)
-        run_worker_node(container.nodes[i]);
+void main_node_job(void *self) {}
 
-    run_worker_node(container.nodes[PARENT_ID]);
+int main(int argc, char *argv[]) {
+    int node_count = atoi(argv[2]) + 1;
 
-    receive_children_messages(container);
-}
-
-int main(int argc, char **argv) {
-    uint8_t units_number = strtol(argv[2], (char **)NULL, 10) + 1;
-    create_log_files();
-
-    NodesContainer container = initialize_container(units_number);
-    run_container(container);
-
-    exit(0);
+    DistributedSystem ds = create_distributed_system(node_count, main_node_job, child_job);
+    get_events_log_descriptor();
+    run_distributed_system(&ds);
+    return 0;
 }
