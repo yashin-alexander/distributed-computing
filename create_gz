@@ -1,12 +1,19 @@
 #!/bin/bash
 
-rm interprocess-communication-lib/a.out
-rm interprocess-communication-lib/events.log
-rm interprocess-communication-lib/pipes.log
+if [[ -z "$1" ]]
+then
+  echo 'Missing option arg'
+  exit 1
+fi
 
-cd interprocess-communication-lib
-mkdir pa1
-cp * pa1/
-tar -czvf pa1.tar.gz pa1
-rm -r pa1
-mv pa1.tar.gz ../
+if [[ $1 -eq 1 ]]
+then
+  rm pa1/a.out
+  rm pa1/events.log
+  rm pa1/pipes.log
+
+  tar -czvf pa1.tar.gz pa1
+  mv pa1.tar.gz archives/
+
+  cp pa1/* moss_faker/1/my/
+fi

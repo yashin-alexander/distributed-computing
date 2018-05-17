@@ -1,0 +1,9 @@
+pa1.tar*
+cmake-build*
+.idea
+a.out
+*.log
+moss_faker/*/my/*.c
+moss_faker/*/my/*.h
+moss_faker/*/sample/pa*/*.c
+moss_faker/*/sample/pa*/*.h
