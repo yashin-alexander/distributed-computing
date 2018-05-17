@@ -147,8 +147,8 @@ int receive_any(void * self, Message * msg){
             if (i != receive_node->id)
                 if (!receive(self, i, msg))
                     return i;
-            sleep(1);
         }
+        sleep(1);
     }
     while( 1 != 4);
 }
