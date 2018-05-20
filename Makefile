@@ -19,3 +19,12 @@ moss4:
 	./run_moss 4
 moss5:
 	./run_moss 5
+
+hint:
+	@echo 'export LD_LIBRARY_PATH=/home/alexander/Documents/distributed-computing/libs/pa2345_starter_code/lib64'
+	@echo 'LD_PRELOAD=/home/alexander/Documents/distributed-computing/libs/pa2345_starter_code/lib64'
+
+clean:
+	rm -f */a.out
+	rm -f */events.log
+	rm -f */pipes.log

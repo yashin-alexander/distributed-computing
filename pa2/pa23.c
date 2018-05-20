@@ -8,11 +8,16 @@
 #include <sys/wait.h>
 
 #include "ipc.h"
-#include "common.h"
 
 #include "logging.h"
 #include "structures.h"
+#include "banking.h"
 
+
+void transfer(void * parent_data, local_id src, local_id dst, balance_t amount)
+{
+    // student, please implement me
+}
 
 
 MessageHeader create_message_header(uint16_t payload_len, MessageType type, timestamp_t local_time){
@@ -23,6 +28,7 @@ MessageHeader create_message_header(uint16_t payload_len, MessageType type, time
     header.s_local_time = local_time;
     return header;
 }
+
 
 Message create_message(char *payload, uint16_t payload_len, MessageType type, timestamp_t local_time){
     Message msg = {
