@@ -5,7 +5,6 @@
 
 #include "logging.h"
 
-
 char msg[64];
 
 void create_log_files(){
@@ -49,6 +48,18 @@ void log_done_event(local_id node_id){
 
 void log_received_all_done_event(local_id node_id){
     int len = sprintf(msg, log_received_all_done_fmt, node_id);
+    write(STDOUT_FILENO, msg, len);
+    write(events_log_fd, msg, len);
+}
+
+void log_transfer_in(int src, int dst, int amount) {
+    int len = sprintf(msg, log_transfer_in_fmt, get_physical_time(), dst, amount, src);
+    write(STDOUT_FILENO, msg, len);
+    write(events_log_fd, msg, len);
+}
+
+void log_transfer_out(int src, int dst, int amount) {
+    int len = sprintf(msg, log_transfer_out_fmt, get_physical_time(), src, amount, dst);
     write(STDOUT_FILENO, msg, len);
     write(events_log_fd, msg, len);
 }

@@ -4,6 +4,7 @@
 #include <fcntl.h>
 
 #include "logging.h"
+#include "common.h"
 
 char msg[64];
 

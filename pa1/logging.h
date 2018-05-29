@@ -2,7 +2,7 @@
 #define __LOGGING__H
 
 
-#include "ipc.h"
+#include "../pa1/ipc.h"
 
 static const char * const log_started_fmt =
         "Process %1d (pid %5d, parent %5d) has STARTED\n";
@@ -15,6 +15,7 @@ static const char * const log_done_fmt =
 
 static const char * const log_received_all_done_fmt =
         "Process %1d received all DONE messages\n";
+
 
 int events_log_fd;
 int pipes_log_fd;

@@ -211,6 +211,7 @@ void worker_pre_synchronize(Node node){
     msg.s_header.s_payload_len = len;
     send_multicast(&node, &msg);
 
+    msg = create_message("", 0, STOP, 0);
     for (uint8_t i = 2; i < node.connection_count; i++)
         receive_any(&node, &msg);
     log_received_all_started_event(node.id);
