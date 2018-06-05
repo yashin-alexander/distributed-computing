@@ -8,181 +8,108 @@
 #include "banking.h"
 #include "pa2345.h"
 #include "ipc.h"
-
-
-typedef struct {
-    int read;
-    int write;
-} pipe_ends;
-
-typedef struct {
-    int id;
-    pid_t pid;
-    pipe_ends *pipes;
-    uint8_t connection_count;
-    int balance;
-} proc;
-
-typedef struct{
-    uint8_t proc_count;
-    proc *nodes;
-} ProcContainer;
-
-static const char *const log_close_read_end = "PID = %d CLOSED READ-end (%d) pipe FOR procs %d -> %d\n";
-static const char *const log_close_write_end = "PID = %d CLOSED READ-end (%d) pipe FOR procs %d -> %d\n";
-static const char *const log_create_pipe = "CREATED pipe FOR procs %d -> %d (READ: %d WRITE: %d)\n";
 static const char *const log_sent_balance_history = "%d: process %1d sent balance history\n";
-static const char *const log_sent_started = "%d: process %1d sent started message\n";
 static const char *const log_received_all_history = "%d: process %1d received all history\n";
-
-//BalanceHistory bh;
+static const char *const log_close_write_end = "PID = %d CLOSED READ-end (%d) pipe FOR procs %d -> %d\n";
+typedef struct {
+    int write;
+    int read;
+} pipe_ends;
+static const char *const log_close_read_end = "PID = %d CLOSED READ-end (%d) pipe FOR procs %d -> %d\n";
+static const char *const log_sent_started = "%d: process %1d sent started message\n";
+static const char *const log_create_pipe = "CREATED pipe FOR procs %d -> %d (READ: %d WRITE: %d)\n";
+typedef struct {
+    pipe_ends *pipes;
+    pid_t pid;
+    int id;
+} worker;
+BalanceHistory bh;
+int *start_balances;
+worker *procs;
+int balance;
+int workers_cnt;
 FILE *p_events_log;
 FILE *p_pipes_log;
-
-void proc_work(ProcContainer container, proc * self);
+void open_nonblocking_pipes(worker tmp_worker, int worker_index, int workers_cnt);
+void wait_all_procs_history(int id, AllHistory *allHistory);
+void initialize_balances(int balance_cnt , char *argv[]);
+void full_fill_history(int max_time, BalanceHistory *bh);
+worker create_process(int worker_index, int workers_cnt);
+void wait_proc_status(int id, int dst, int status);
+void wait_all_procs_status(int id, int status);
+void transfer_processing(Message msg, int id);
+void create_processes(int workers_cnt);
+void write_balance_history();
+void create_main_process();
+void usefull_work(int id);
+void close_pipes(int id);
+void start_work(int id);
+void proc_work(int id);
+void done_work(int id);
+void exit_work(int id);
 void prepare_logs();
-void start_work(proc * self);
-void done_work(proc * self);
-void wait_all_procs_status(proc * self, int status);
-void useful_work(proc * self);
-void exit_work(ProcContainer container, proc * self);
-void close_pipes(ProcContainer container, proc * self);
-//void write_balance_history();
-void transfer_processing(Message msg, proc * self);
-void wait_all_procs_history(proc * self, AllHistory *allHistory);
-void wait_proc_status(proc * self, int dst, int status);
-//void full_fill_history(int max_time, BalanceHistory *bh);
-
-
+void mian_proc(int workers_cnt);
 void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
     Message msg;
     TransferOrder transferOrder;
-    transferOrder.s_amount = amount;
     transferOrder.s_dst = dst;
     transferOrder.s_src = src;
+    transferOrder.s_amount = amount;
     memcpy(msg.s_payload, &transferOrder, sizeof(transferOrder));
-    msg.s_header.s_magic = MESSAGE_MAGIC;
+    msg.s_header.s_payload_len = sizeof(transferOrder);
     msg.s_header.s_local_time = get_physical_time();
     msg.s_header.s_type = TRANSFER;
-    msg.s_header.s_payload_len = sizeof(transferOrder);
-
-    send(parent_data, src, &msg);
-    wait_proc_status(parent_data, dst, ACK);
+    msg.s_header.s_magic = MESSAGE_MAGIC;
+    send(&procs[PARENT_ID], src, &msg);
+    wait_proc_status(PARENT_ID, dst, ACK);
 }
-
 int receive(void *self, local_id from, Message *msg) {
-    proc *proc_tmp = (proc *) self;
-
-    int fd = proc_tmp->pipes[from].read;
-
-    if (read(fd, &msg->s_header, sizeof(msg->s_header)) > 0) {
-        if (read(fd, msg->s_payload, msg->s_header.s_payload_len) >= 0) {
+    worker *proc_tmp = (worker *) self;
+    int fd = procs[from].pipes[proc_tmp->id].read;
+    if (read(fd, &msg->s_header, sizeof(msg->s_header)) > 0)
+        if (read(fd, msg->s_payload, msg->s_header.s_payload_len) >= 0)
             return 0;
-        }
-    }
-
     return 1;
 }
-
-ProcContainer create_distributed_system(int * balances, int process_cnt) {
-    ProcContainer container;
-    container.proc_count = process_cnt;
-    container.nodes = (proc*) calloc(process_cnt, sizeof(proc));
-
-    for (int i = 0; i < process_cnt; i++) {
-        proc tmp_proc;
-        tmp_proc.connection_count = process_cnt;
-        tmp_proc.balance = balances[i - 1];
-        tmp_proc.pipes = (pipe_ends *) malloc(sizeof(pipe_ends) * process_cnt);
-
-        for (int j = 0; j < process_cnt; j++) {
-            if (i == j)
-                continue;
-            int flags;
-            int tmp_pipe[2];
-            pipe(tmp_pipe);
-            tmp_proc.pipes[j].read = tmp_pipe[0];
-            tmp_proc.pipes[j].write = tmp_pipe[1];
-
-            flags = fcntl(tmp_proc.pipes[j].read, F_GETFL, 0);
-            fcntl(tmp_proc.pipes[j].read, F_SETFL, flags | O_NONBLOCK);
-            flags = fcntl(tmp_proc.pipes[j].write, F_GETFL, 0);
-            fcntl(tmp_proc.pipes[j].write, F_SETFL, flags | O_NONBLOCK);
-
-            fprintf(p_pipes_log, log_create_pipe, i, j, tmp_proc.pipes[j].read, tmp_proc.pipes[j].write);
-            fflush(p_pipes_log);
-        }
-        container.nodes[i] = tmp_proc;
-    }
-    return container;
-}
-
 int receive_any(void *self, Message *msg) {
-    proc *proc_tmp = (proc *) self;
-    int flag = 1;
-    for (int i = 0; i < proc_tmp->connection_count; i++) {
-        if (proc_tmp->id == i) continue;
-        if (receive(proc_tmp, i, msg) == 0) {
-            flag = 0;
-            break;
-        }
+    worker *proc_tmp = (worker *) self;
+    for (int i = 0; i < workers_cnt; i++) {
+        if (proc_tmp->id == i)
+            continue;
+        else if (receive(proc_tmp, i, msg) == 0)
+            return 0;
     }
-    return flag;
+    return 1;
 }
-
-
 int send(void *self, local_id dst, const Message *msg) {
-    proc *proc_tmp = (proc *) self;
-    printf("TRY TO SEND TO %d\n", proc_tmp->id);
-    write(proc_tmp->pipes[dst].write, msg, msg->s_header.s_payload_len + sizeof(MessageHeader));
+    worker *proc_tmp = (worker *) self;
+    int wd_fd = proc_tmp->pipes[dst].write;
+    int symbols_count = msg->s_header.s_payload_len + sizeof(MessageHeader);
+    write(wd_fd, msg, symbols_count);
     return 0;
 }
-
 int send_multicast(void *self, const Message *msg) {
-    proc *proc_tmp = (proc *) self;
-
-    for (int i = 0; i < proc_tmp->connection_count; i++) {
+    worker *proc_tmp = (worker *) self;
+    for (int i = 0; i < workers_cnt; i++) {
         if (i == proc_tmp->id)
             continue;
-
-        write(proc_tmp->pipes[i].write, msg, msg->s_header.s_payload_len + sizeof(MessageHeader));
+        send(self ,i, msg);
     }
-
     return 0;
 }
-
-void wait_proc_status(proc * self, int dst, int status) {
+void wait_proc_status(int id, int dst, int status) {
     Message msg;
     do {
-        receive(self, dst, &msg);
+        receive(&procs[id], dst, &msg);
     } while (msg.s_header.s_type != status);
 }
-
-void prepare_logs() {
-    p_events_log = fopen(events_log, "w+");
-    p_pipes_log = fopen(pipes_log, "w+");
-}
-
-//void write_balance_history(proc * self) {
-//    BalanceState bs;
-//    int current_time = get_physical_time();
-//
-//    bs.s_balance = self->balance;
-//    bs.s_time = current_time;
-//    bs.s_balance_pending_in = 0;
-//
-//    bh.s_history[current_time] = bs;
-//    bh.s_history_len = current_time + 1;
-//}
-
-void wait_all_procs_history(proc * self, AllHistory *allHistory) {
+void wait_all_procs_history(int id, AllHistory *allHistory) {
     Message msg;
     int max_time = 0;
-    for (int i = 1; i < self->connection_count; i++) {
+    for (int i = 1; i < workers_cnt; i++) {
         BalanceHistory bh;
-
         do {
-            receive(self, i, &msg);
+            receive(&procs[id], i, &msg);
             if (msg.s_header.s_type == BALANCE_HISTORY) {
                 bh = *(BalanceHistory *) msg.s_payload;
                 if (bh.s_id != i)
@@ -190,224 +117,227 @@ void wait_all_procs_history(proc * self, AllHistory *allHistory) {
                 break;
             }
         } while (1);
-
         if (max_time < bh.s_history_len)
             max_time = bh.s_history_len;
-//        full_fill_history(max_time, &bh);
+        full_fill_history(max_time, &bh);
         allHistory->s_history[i - 1] = bh;
     }
-
 }
-
-//void full_fill_history(int max_time, BalanceHistory *bh) {
-//    bh->s_history[0].s_balance = start_balances[bh->s_id];
-//
-//    for (int i = 1; i < max_time; i++) {
-//        if (bh->s_history[i].s_balance == 0) {
-//            bh->s_history[i].s_balance = bh->s_history[i - 1].s_balance;
-//            bh->s_history[i].s_time = i;
-//            bh->s_history[i].s_balance_pending_in = 0;
-//            if(i==bh->s_history_len)
-//                bh->s_history_len++;
-//        }
-//    }
-//}
-
-void wait_all_procs_status(proc * self, int status) {
+void full_fill_history(int max_time, BalanceHistory *bh) {
+    bh->s_history[0].s_balance = start_balances[bh->s_id];
+    for (int i = 1; i < max_time; i++) {
+        if (bh->s_history[i].s_balance == 0) {
+            bh->s_history[i].s_balance = bh->s_history[i - 1].s_balance;
+            bh->s_history[i].s_time = i;
+            bh->s_history[i].s_balance_pending_in = 0;
+            if(i==bh->s_history_len)
+                bh->s_history_len++;
+        }
+    }
+}
+void prepare_logs() {
+    p_pipes_log = fopen(pipes_log, "w");
+    p_events_log = fopen(events_log, "w");
+}
+void wait_all_procs_status(int id, int status) {
     Message msg;
-    for (int i = 1; i < self->connection_count; i++) {
-        if (i == self->id) continue;
+    for (int i = 1; i < workers_cnt; i++) {
+        if (i == id)
+            continue;
         do {
-            receive(self, i, &msg);
+            receive(&procs[id], i, &msg);
         } while (msg.s_header.s_type != status);
     }
 }
-
-void transfer_processing(Message msg, proc * self) {
+void write_balance_history() {
+    BalanceState bs;
+    bs.s_balance = balance;
+    int current_time = get_physical_time();
+    bs.s_balance_pending_in = 0;
+    bs.s_time = current_time;
+    bh.s_history[current_time] = bs;
+    bh.s_history_len = current_time + 1;
+}
+void transfer_processing(Message msg, int id) {
     TransferOrder *order = (TransferOrder *) msg.s_payload;
     int dst = order->s_dst;
     int src = order->s_src;
     int amount = order->s_amount;
-    if (dst == self->id) {
-        fprintf(p_events_log, log_transfer_in_fmt, get_physical_time(), dst, amount, src);
+    if (dst == id) {
+        fprintf(p_events_log, log_transfer_in_fmt, get_physical_time(),dst,amount, src);
         fflush(p_events_log);
-        self->balance += amount;
+        balance += amount;
         msg.s_header.s_type = ACK;
-        send(self, PARENT_ID, &msg);
+        send(&procs[id], PARENT_ID, &msg);
     } else {
         fprintf(p_events_log, log_transfer_out_fmt, get_physical_time(), src, amount, dst);
         fflush(p_events_log);
-        self->balance -= amount;
-        send(self, dst, &msg);
+        balance -= amount;
+        send(&procs[id], dst, &msg);
     }
-//    write_balance_history(self);
+    write_balance_history();
 }
-
-void useful_work(proc * self) {
+void usefull_work(int id) {
     Message msg;
     do {
-        int code = receive_any(self, &msg);
+        int code = receive_any(&procs[id], &msg);
         if (code != 1 && msg.s_header.s_type == TRANSFER)
-            transfer_processing(msg, self);
+            transfer_processing(msg, id);
     } while (msg.s_header.s_type != STOP);
 }
-
-
-void close_pipes(ProcContainer container, proc * self) {
-    for (int i = 0; i < container.proc_count; i++) {
-        for (int j = 0; j < container.proc_count; j++) {
-            int tmp_read = container.nodes[i].pipes[j].read;
-            int tmp_write = container.nodes[i].pipes[j].write;
-            if (i == j)
-                continue;
-            if (i == self->id) {
-                close(container.nodes[i].pipes[j].read);
-                fprintf(p_pipes_log, log_close_read_end, self->id, tmp_read, i, j);
+void create_processes(int workers_cnt) {
+    for (int worker_index = 0; worker_index < workers_cnt; worker_index++)
+        procs[worker_index] = create_process(worker_index, workers_cnt);
+}
+worker create_process(int worker_index, int workers_cnt) {
+    worker tmp_worker;
+    tmp_worker.pipes = (pipe_ends *) malloc(sizeof(pipe_ends) * workers_cnt);
+    open_nonblocking_pipes(tmp_worker, worker_index, workers_cnt);
+    return tmp_worker;
+}
+void open_nonblocking_pipes(worker tmp_worker, int worker_index, int workers_cnt) {
+    for (int j = 0; j < workers_cnt; j++) {
+        int flags;
+        int tmp_pipe[2];
+        pipe(tmp_pipe);
+        if (worker_index == j)
+            continue;
+        tmp_worker.pipes[j].write = tmp_pipe[1];
+        tmp_worker.pipes[j].read = tmp_pipe[0];
+        flags = fcntl(tmp_worker.pipes[j].write, F_GETFL, 0);
+        fcntl(tmp_worker.pipes[j].write, F_SETFL, flags | O_NONBLOCK);
+        flags = fcntl(tmp_worker.pipes[j].read, F_GETFL, 0);
+        fcntl(tmp_worker.pipes[j].read, F_SETFL, flags | O_NONBLOCK);
+        fprintf(p_pipes_log, log_create_pipe, worker_index, j, tmp_worker.pipes[j].read, tmp_worker.pipes[j].write);
+    }
+}
+void close_pipes(int id) {
+    for (int i = 0; i < workers_cnt; i++) {
+        for (int j = 0; j < workers_cnt; j++) {
+            if (i == j) continue;
+            int tmp_write = procs[i].pipes[j].write;
+            int tmp_read = procs[i].pipes[j].read;
+            if (j == id) {
+                close(procs[i].pipes[j].write);
+                fprintf(p_pipes_log, log_close_write_end, id, tmp_write, i, j);
+            } else if (i == id) {
+                close(procs[i].pipes[j].read);
+                fprintf(p_pipes_log, log_close_read_end, id, tmp_read, i, j);
             } else {
-                if (j == self->id) {
-                    close(container.nodes[i].pipes[j].write);
-                    fprintf(p_pipes_log, log_close_write_end, self->id, tmp_write, i, j);
-                } else {
-                    if (j == i) {
-                        continue;
-                    }
-                    close(container.nodes[i].pipes[j].read);
-                    close(container.nodes[i].pipes[j].write);
-                    fprintf(p_pipes_log, log_close_write_end, self->id, tmp_write, i, j);
-                    fprintf(p_pipes_log, log_close_read_end, self->id, tmp_read, i, j);
-                }
+                fprintf(p_pipes_log, log_close_read_end, id, tmp_read, i, j);
+                fprintf(p_pipes_log, log_close_write_end, id, tmp_write, i, j);
+                close(procs[i].pipes[j].write);
+                close(procs[i].pipes[j].read);
             }
         }
     }
 }
-
-void proc_work(ProcContainer container, proc * self) {
-    close_pipes(container, self);
-    start_work(self);
-    useful_work(self);
-    done_work(self);
-    exit_work(container, self);
+void proc_work(int id) {
+    close_pipes(id);
+    start_work(id);
+    usefull_work(id);
+    done_work(id);
+    exit_work(id);
 }
-
-void start_work(proc * self) {
-    Message msg;
-    sprintf(msg.s_payload, log_started_fmt, get_physical_time(), self->id, getpid(), getppid(), self->balance);
-    msg.s_header.s_magic = MESSAGE_MAGIC;
-    msg.s_header.s_local_time = get_physical_time();
-    msg.s_header.s_type = STARTED;
-    msg.s_header.s_payload_len = strlen(msg.s_payload);
-
-//    printf("msg will be sent to %d\n", self.);
-    send(self, PARENT_ID, &msg);
-    fprintf(p_events_log, log_sent_started, get_physical_time(), self->id);
+void done_work(int id) {
+    fprintf(p_events_log, log_done_fmt, get_physical_time(), id, balance);
     fflush(p_events_log);
-}
-
-void done_work(proc * self) {
-    fprintf(p_events_log, log_done_fmt, get_physical_time(), self->id, self->balance);
-    fflush(p_events_log);
-
     Message msg;
-    sprintf(msg.s_payload, log_done_fmt, get_physical_time(), self->id, self->balance);
-    msg.s_header.s_magic = MESSAGE_MAGIC;
+    sprintf(msg.s_payload, log_done_fmt, get_physical_time(), id, balance);
     msg.s_header.s_local_time = get_physical_time();
     msg.s_header.s_type = DONE;
+    msg.s_header.s_magic = MESSAGE_MAGIC;
     msg.s_header.s_payload_len = strlen(msg.s_payload);
-
-    send_multicast(self, &msg);
-    wait_all_procs_status(self, DONE);
-    fprintf(p_events_log, log_received_all_done_fmt, get_physical_time(), self->id);
-    fflush(p_events_log);
-
-//    memcpy(msg.s_payload, &bh, sizeof(bh));
+    send_multicast(&procs[id], &msg);
+    wait_all_procs_status(id, DONE);
+    fprintf(p_events_log, log_received_all_done_fmt, get_physical_time(), id);
+    memcpy(msg.s_payload, &bh, sizeof(bh));
     msg.s_header.s_magic = MESSAGE_MAGIC;
     msg.s_header.s_local_time = get_physical_time();
     msg.s_header.s_type = BALANCE_HISTORY;
-//    msg.s_header.s_payload_len = sizeof(bh);
-
-    send(self, PARENT_ID, &msg);
-
-    fprintf(p_events_log, log_sent_balance_history, get_physical_time(), self->id);
+    msg.s_header.s_payload_len = sizeof(bh);
+    send(&procs[id], PARENT_ID, &msg);
+    fprintf(p_events_log, log_sent_balance_history, get_physical_time(), id);
     fflush(p_events_log);
 }
-
-void exit_work(ProcContainer container, proc * self) {
-    for (int i = 0; i < self->connection_count; i++) {
-        int tmp_read = container.nodes[PARENT_ID].pipes[i].read;
-        close(container.nodes[PARENT_ID].pipes[i].read);
-        fprintf(p_pipes_log, log_close_read_end, self->id, tmp_read, get_physical_time(), i);
-    }
-    fclose(p_events_log);
-    fclose(p_pipes_log);
+void start_work(int id) {
+    Message msg;
+    sprintf(msg.s_payload, log_started_fmt, get_physical_time(), id, getpid(), getppid(), balance);
+    msg.s_header.s_type = STARTED;
+    msg.s_header.s_local_time = get_physical_time();
+    msg.s_header.s_magic = MESSAGE_MAGIC;
+    msg.s_header.s_payload_len = strlen(msg.s_payload);
+    send(&procs[id], PARENT_ID, &msg);
+    fprintf(p_events_log, log_sent_started, get_physical_time(), id);
+    fflush(p_events_log);
 }
-
-int main(int argc, const char *argv[]) {
-    if (argc < 3 || (strcmp(argv[1], "-p") != 0)) {
-        printf("use key -p <N> to set the number of child processes\n");
-        return 1;
+void exit_work(int id) {
+    for (int i = 0; i < workers_cnt; i++) {
+        int tmp_read = procs[0].pipes[i].read;
+        close(procs[0].pipes[i].read);
+        fprintf(p_pipes_log, log_close_read_end, id, tmp_read, get_physical_time(), i);
     }
-    if (argc != atoi((argv[2])) + 3) {
-        printf("Enter valid number of balances\n");
-        return 1;
+    fclose(p_pipes_log);
+    fclose(p_events_log);
+}
+void initialize_balances(int balance_cnt, char *argv[]) {
+    start_balances = (int *) malloc(sizeof(int) * balance_cnt);
+    for (int i = 1; i < workers_cnt; i++) {
+        start_balances[i] = atoi(argv[i + 2]);
     }
-
-    int balance_cnt = atoi(argv[2]);
-    int proc_cnt = balance_cnt + 1;
-    int node_balances [balance_cnt];
-
-    prepare_logs();
-    for (int i = 0; i < balance_cnt; i++)
-        node_balances[i] = atoi(argv[i + 2]);
-
-    ProcContainer container = create_distributed_system(node_balances, proc_cnt);
-
-    container.nodes[0].pid = getpid();
-    container.nodes[0].id = PARENT_ID;
-    pid_t pid = getppid();
-    for (int i = 1; i < proc_cnt; i++) {
-        if ((pid = fork()) == 0) {
-            container.nodes[i].pid = getpid();
-            container.nodes[i].id = i;
-//            bh.s_id = i;
-            printf("proc run %d\n", i);
-            proc_work(container, &container.nodes[i]);
+}
+void create_main_process() {
+    pid_t ppid = getppid();
+    procs[0].id = PARENT_ID;
+    procs[0].pid = getpid();
+    for (int worker_index = 1; worker_index < workers_cnt; worker_index++) {
+        if ((ppid = fork()) == 0) {
+            bh.s_id = worker_index;
+            balance = start_balances[worker_index];
+            procs[worker_index].id = worker_index;
+            procs[worker_index].pid = getpid();
+            proc_work(worker_index);
             break;
         }
     }
-    if (pid != 0) {
-        close_pipes(container, &container.nodes[PARENT_ID]);
-        wait_all_procs_status(&container.nodes[PARENT_ID], STARTED);
-        fprintf(p_events_log, log_received_all_started_fmt, get_physical_time(), PARENT_ID);
-        fflush(p_events_log);
-
-        bank_robbery(container.nodes, proc_cnt - 1);
-
+}
+void main_proc(int workers_cnt){
+    pid_t ppid = getppid();
+    if (ppid) {
         Message msg;
+        AllHistory allHistory;
+        close_pipes(0);
+        wait_all_procs_status(PARENT_ID, STARTED);
+        fprintf(p_events_log, log_received_all_started_fmt, get_physical_time(), PARENT_ID);
+        bank_robbery(procs, workers_cnt - 1);
         msg.s_header.s_magic = MESSAGE_MAGIC;
         msg.s_header.s_local_time = get_physical_time();
         msg.s_header.s_type = STOP;
         msg.s_header.s_payload_len = strlen(msg.s_payload);
-
-
-        send_multicast(&container.nodes[PARENT_ID], &msg);
-
-        wait_all_procs_status(&container.nodes[PARENT_ID], DONE);
+        send_multicast(&procs[0], &msg);
+        wait_all_procs_status(PARENT_ID, DONE);
         fprintf(p_events_log, log_received_all_done_fmt, get_physical_time(), PARENT_ID);
-        fflush(p_events_log);
-
-        AllHistory allHistory;
-        allHistory.s_history_len = proc_cnt - 1;
-        wait_all_procs_history(&container.nodes[PARENT_ID], &allHistory);
-
+        allHistory.s_history_len = workers_cnt - 1;
+        wait_all_procs_history(PARENT_ID, &allHistory);
         fprintf(p_events_log, log_received_all_history, get_physical_time(), PARENT_ID);
         fflush(p_events_log);
-
-        int proc_cnt_copy = proc_cnt;
-
-        while (--proc_cnt_copy)
-            wait(NULL);
+        int workers_cnt_copy = workers_cnt;
+        while (--workers_cnt_copy) wait(NULL);
         print_history(&allHistory);
-
     }
+}
+int main(int argc, char *argv[]) {
+    if (argc < 3 || strcmp(argv[1], "-p") || argc != (atoi((argv[2])) + 3)) {
+        return 1;
+    }
+    int balance_cnt = atoi(argv[2]);
+    workers_cnt = balance_cnt + 1;
+    procs = (worker *) malloc(sizeof(worker) * workers_cnt);
+    initialize_balances(balance_cnt, argv);
+    prepare_logs();
+    create_processes(workers_cnt);
+    create_main_process();
+    main_proc(workers_cnt);
+
     return 0;
 }
