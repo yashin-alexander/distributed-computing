@@ -85,6 +85,7 @@ int send(void *self, local_id dst, const Message *msg) {
     worker *proc_tmp = (worker *) self;
     int wd_fd = proc_tmp->pipes[dst].write;
     int symbols_count = msg->s_header.s_payload_len + sizeof(MessageHeader);
+//    printf("failed to statta?\n");
     write(wd_fd, msg, symbols_count);
     return 0;
 }
@@ -188,6 +189,21 @@ void usefull_work(int id) {
 void create_processes(int workers_cnt) {
     for (int worker_index = 0; worker_index < workers_cnt; worker_index++)
         procs[worker_index] = create_process(worker_index, workers_cnt);
+//    for (int worker_index = 1; worker_index < workers_cnt; worker_index++)
+//        close_pipes(worker_index);
+//    printf("         1      2      3     4");
+//
+//    for (int worker_index = 1; worker_index < workers_cnt; worker_index++) {
+//        printf("\nworker %d: ", worker_index);
+//        for (int nei_index = 0; nei_index < workers_cnt; nei_index++) {
+//            if (worker_index == nei_index)
+//                continue;
+//            printf("%d/%d ",
+//                   procs[worker_index].pipes[nei_index].read,
+//                   procs[worker_index].pipes[nei_index].write
+//            );
+//        }
+//    }
 }
 worker create_process(int worker_index, int workers_cnt) {
     worker tmp_worker;
@@ -210,6 +226,7 @@ void open_nonblocking_pipes(worker tmp_worker, int worker_index, int workers_cnt
         fcntl(tmp_worker.pipes[j].read, F_SETFL, flags | O_NONBLOCK);
         fprintf(p_pipes_log, log_create_pipe, worker_index, j, tmp_worker.pipes[j].read, tmp_worker.pipes[j].write);
     }
+//    sleep(1);
 }
 void close_pipes(int id) {
     for (int i = 0; i < workers_cnt; i++) {
@@ -231,6 +248,14 @@ void close_pipes(int id) {
             }
         }
     }
+//    for (int nei_index = 0; nei_index < workers_cnt; nei_index++) {
+//        if (id == nei_index)
+//            continue;
+//        printf("worker index = %d, connect to %d to read: %d \n",
+//               id, nei_index,
+//               procs[id].pipes[nei_index].read
+//        );
+//    }
 }
 void proc_work(int id) {
     close_pipes(id);
@@ -306,7 +331,7 @@ void main_proc(int workers_cnt){
     if (ppid) {
         Message msg;
         AllHistory allHistory;
-        close_pipes(0);
+//        printf("ALL THE PROC IS STARTID\n");
         wait_all_procs_status(PARENT_ID, STARTED);
         fprintf(p_events_log, log_received_all_started_fmt, get_physical_time(), PARENT_ID);
         bank_robbery(procs, workers_cnt - 1);
