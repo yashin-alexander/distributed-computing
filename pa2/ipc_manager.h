@@ -1,15 +1,14 @@
 #define _GNU_SOURCE
-#include <fcntl.h>
-#include <stdio.h>
+#include <sys/types.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <stdio.h>
-#include <sys/types.h>
 
-#include "ipc.h"
+#include "ipc_common.h"
 #include "common.h"
 #include "pa2345.h"
-#include "ipc_common.h"
+#include "ipc.h"
 
 
 void init_array(InteractionInfo* interaction_info);

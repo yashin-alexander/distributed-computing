@@ -1,8 +1,8 @@
 #ifndef IPC_COMMON_HEADER_H
 #define IPC_COMMON_HEADER_H
 
-#include <stddef.h>
 #include <stdint.h>
+#include <stddef.h>
 #include "banking.h"
 
 #define MAX_PROCESS_COUNT 11

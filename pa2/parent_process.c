@@ -1,10 +1,10 @@
-#include "ipc.h"
-#include "common.h"
-#include "pa2345.h"
 #include "ipc_common.h"
 #include "ipc_manager.h"
 #include "parent_process.h"
+#include "common.h"
+#include "pa2345.h"
 #include "logger.h"
+#include "ipc.h"
 
 void parent_work(InteractionInfo* interaction_info){
   local_id id = 0;

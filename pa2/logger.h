@@ -1,10 +1,11 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <fcntl.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
+#include <stdio.h>
+#include <fcntl.h>
+
 #include "banking.h"
 #include "common.h"
 #include "pa2345.h"

@@ -1,11 +1,11 @@
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include <errno.h>
-#include "ipc.h"
+#include <stdio.h>
+
 #include "ipc_common.h"
+#include "ipc.h"
 
 int send_multicast(void * self, const Message * msg){
   InteractionInfo *interaction_info = (InteractionInfo*)self;
@@ -22,7 +22,6 @@ int send(void * self, local_id dst, const Message * msg){
   InteractionInfo *interaction_info = (InteractionInfo*)self;
   int write_fd = interaction_info->s_pipes[interaction_info->s_current_id][dst]->s_write_fd;
   if(write(write_fd, msg, msg->s_header.s_payload_len + sizeof(MessageHeader)) <= 0){
-    printf("%s\n",strerror(errno) );
     return 1;
   }
 

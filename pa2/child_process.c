@@ -35,8 +35,8 @@ void payload(InteractionInfo* interaction_info){
   timestamp_t     last_time = 0;
   int             done_count = 0;
   int             balance = interaction_info->s_balance;
-  bool            isInStopState = 0;
-  bool            isHistoryRequired = 0;
+  int             isInStopState = 0;
+  int             isHistoryRequired = 0;
   history.s_id = interaction_info->s_current_id;
   state.s_balance = balance;
   state.s_time = 0;
@@ -65,8 +65,7 @@ void payload(InteractionInfo* interaction_info){
           return;
         break;
       }
-      default:
-        printf("%s\n", "default");
+      default:{}
       break;
     }
   }
@@ -116,7 +115,7 @@ void handle_stop_msg(InteractionInfo* interaction_info, balance_t balance){
 }
 
 int handle_done_msg(InteractionInfo* interaction_info,int done_count, int process_count, timestamp_t last_time,
-   BalanceHistory* history, bool isInStopState, bool isHistoryRequired){
+   BalanceHistory* history, int isInStopState, int isHistoryRequired){
 
   local_id id = interaction_info ->s_current_id;
   if (done_count > process_count - 2) {
