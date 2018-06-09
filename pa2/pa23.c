@@ -10,7 +10,7 @@
 #include "ipc.h"
 static const char *const log_sent_balance_history = "%d: process %1d sent balance history\n";
 static const char *const log_received_all_history = "%d: process %1d received all history\n";
-static const char *const log_close_write_end = "PID = %d CLOSED READ-end (%d) pipe FOR procs %d -> %d\n";
+static const char *const log_close_write_end = "PID = %d CLOSED WRITE-end (%d) pipe FOR procs %d -> %d\n";
 typedef struct {
     int write;
     int read;
@@ -84,8 +84,8 @@ int receive_any(void *self, Message *msg) {
 int send(void *self, local_id dst, const Message *msg) {
     worker *proc_tmp = (worker *) self;
     int wd_fd = proc_tmp->pipes[dst].write;
+    printf("msg %s is sent to %d by %d, write pipe = %d\n", msg->s_payload, dst, proc_tmp->id, wd_fd);
     int symbols_count = msg->s_header.s_payload_len + sizeof(MessageHeader);
-//    printf("failed to statta?\n");
     write(wd_fd, msg, symbols_count);
     return 0;
 }
@@ -182,13 +182,51 @@ void usefull_work(int id) {
     Message msg;
     do {
         int code = receive_any(&procs[id], &msg);
+//        printf("msg received, code= %d\n", code);
         if (code != 1 && msg.s_header.s_type == TRANSFER)
             transfer_processing(msg, id);
     } while (msg.s_header.s_type != STOP);
 }
+
+
+void create_non_block_pipe(int *fd){
+    pipe(fd);
+    int flags = fcntl(fd[0], F_GETFL);
+    fcntl(fd[0], F_SETFL, flags | O_NONBLOCK);
+
+    flags = fcntl(fd[1], F_GETFL);
+    fcntl(fd[1], F_SETFL, flags | O_NONBLOCK);
+}
+
+void establish_unidirectional_connecton(worker *send_worker, worker *receive_worker){
+    int fd[2];
+    create_non_block_pipe(fd);
+    send_worker->pipes[receive_worker->id].write = fd[1];
+    receive_worker->pipes[send_worker->id].read = fd[0];
+//    printf("set up 2 pipes from=%d to=%d\n", send_worker->id, receive_worker->id);
+    fprintf(p_pipes_log, log_create_pipe, send_worker->id, receive_worker->id, fd[1], fd[0]);
+}
+
+void establish_all_connections(int proc_count){
+    for (int i = 0; i < proc_count; i++){
+//        printf("create pipes for worker %d\n", i);
+        for (int j = i + 1; j < proc_count; j++) {
+            establish_unidirectional_connecton(&procs[i], &procs[j]);
+            establish_unidirectional_connecton(&procs[j], &procs[i]);
+        }
+//        printf("created pipes for worker %d\n", i);
+    }
+}
+
 void create_processes(int workers_cnt) {
     for (int worker_index = 0; worker_index < workers_cnt; worker_index++)
         procs[worker_index] = create_process(worker_index, workers_cnt);
+    establish_all_connections(workers_cnt);
+    for (int i = 0; i < workers_cnt; i++) {
+        for (int j = 0; j < workers_cnt; j++){
+            printf("from worker %d to %d -> read:%d, write:%d\n", i, j, );
+        }
+    }
 //    for (int worker_index = 1; worker_index < workers_cnt; worker_index++)
 //        close_pipes(worker_index);
 //    printf("         1      2      3     4");
@@ -208,26 +246,28 @@ void create_processes(int workers_cnt) {
 worker create_process(int worker_index, int workers_cnt) {
     worker tmp_worker;
     tmp_worker.pipes = (pipe_ends *) malloc(sizeof(pipe_ends) * workers_cnt);
-    open_nonblocking_pipes(tmp_worker, worker_index, workers_cnt);
+    tmp_worker.id = worker_index;
     return tmp_worker;
 }
-void open_nonblocking_pipes(worker tmp_worker, int worker_index, int workers_cnt) {
-    for (int j = 0; j < workers_cnt; j++) {
-        int flags;
-        int tmp_pipe[2];
-        pipe(tmp_pipe);
-        if (worker_index == j)
-            continue;
-        tmp_worker.pipes[j].write = tmp_pipe[1];
-        tmp_worker.pipes[j].read = tmp_pipe[0];
-        flags = fcntl(tmp_worker.pipes[j].write, F_GETFL, 0);
-        fcntl(tmp_worker.pipes[j].write, F_SETFL, flags | O_NONBLOCK);
-        flags = fcntl(tmp_worker.pipes[j].read, F_GETFL, 0);
-        fcntl(tmp_worker.pipes[j].read, F_SETFL, flags | O_NONBLOCK);
-        fprintf(p_pipes_log, log_create_pipe, worker_index, j, tmp_worker.pipes[j].read, tmp_worker.pipes[j].write);
-    }
+
+
+//void open_nonblocking_pipes(worker tmp_worker, int worker_index, int workers_cnt) {
+//    for (int j = 0; j < workers_cnt; j++) {
+//        int flags;
+//        int tmp_pipe[2];
+//        pipe(tmp_pipe);
+//        if (worker_index == j)
+//            continue;
+//        tmp_worker.pipes[j].write = tmp_pipe[1];
+//        tmp_worker.pipes[j].read = tmp_pipe[0];
+//        flags = fcntl(tmp_worker.pipes[j].write, F_GETFL, 0);
+//        fcntl(tmp_worker.pipes[j].write, F_SETFL, flags | O_NONBLOCK);
+//        flags = fcntl(tmp_worker.pipes[j].read, F_GETFL, 0);
+//        fcntl(tmp_worker.pipes[j].read, F_SETFL, flags | O_NONBLOCK);
+//        fprintf(p_pipes_log, log_create_pipe, worker_index, j, tmp_worker.pipes[j].read, tmp_worker.pipes[j].write);
+//    }
 //    sleep(1);
-}
+//}
 void close_pipes(int id) {
     for (int i = 0; i < workers_cnt; i++) {
         for (int j = 0; j < workers_cnt; j++) {
@@ -258,11 +298,17 @@ void close_pipes(int id) {
 //    }
 }
 void proc_work(int id) {
-    close_pipes(id);
+//    printf("runna proc work\n");
+//    close_pipes(id);
+//    printf("pipes losed for proc %d\n", id);
     start_work(id);
+//    printf("start work ended for proc %d\n", id);
     usefull_work(id);
+//    printf("useful work ended for proc %d\n", id);
     done_work(id);
+//    printf("work done for proc %d\n", id);
     exit_work(id);
+//    printf("work exited for proc %d\n", id);
 }
 void done_work(int id) {
     fprintf(p_events_log, log_done_fmt, get_physical_time(), id, balance);
@@ -319,6 +365,7 @@ void create_main_process() {
         if ((ppid = fork()) == 0) {
             bh.s_id = worker_index;
             balance = start_balances[worker_index];
+            printf("balance = %d\n", balance);
             procs[worker_index].id = worker_index;
             procs[worker_index].pid = getpid();
             proc_work(worker_index);
@@ -361,6 +408,7 @@ int main(int argc, char *argv[]) {
     initialize_balances(balance_cnt, argv);
     prepare_logs();
     create_processes(workers_cnt);
+    printf("processes crated!\n");
     create_main_process();
     main_proc(workers_cnt);
 
