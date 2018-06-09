@@ -6,16 +6,30 @@ then
   exit 1
 fi
 
+rm moss_faker/$1/my/pa$1/*
+cp pa$1/* moss_faker/$1/my/pa$1/
+
 rm pa$1/a.out
 rm pa$1/events.log
 rm pa$1/pipes.log
 
-tar -czvf pa$1.tar.gz pa$1
+rm moss_faker/$1/my/pa$1/bank_robbery.c
+rm moss_faker/$1/my/pa$1/libruntime.so
+rm moss_faker/$1/my/pa$1/banking.h
+rm moss_faker/$1/my/pa$1/common.h
+rm moss_faker/$1/my/pa$1/pa2345.h
+rm moss_faker/$1/my/pa$1/ipc.h
+
+tar -czvf pa$1.tar.gz moss_faker/$1/my/pa$1
 mv pa$1.tar.gz archives/
 
-cp pa$1/* moss_faker/$1/my/
 
-rm moss_faker/$1/my/lib*
-rm moss_faker/$1/my/bank*
-rm moss_faker/$1/my/pa2345*
-rm moss_faker/$1/my/ipc.h
+rm moss_faker/$1/sample/pa$1/bank_robbery.c
+rm moss_faker/$1/sample/pa$1/libruntime.so
+rm moss_faker/$1/sample/pa$1/banking.h
+rm moss_faker/$1/sample/pa$1/common.h
+rm moss_faker/$1/sample/pa$1/pa2345.h
+rm moss_faker/$1/sample/pa$1/ipc.h
+
+exit 0
+

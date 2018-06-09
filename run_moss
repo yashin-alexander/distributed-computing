@@ -7,4 +7,4 @@ then
 fi
 
 cd moss_faker
-./moss -d $1/sample/pa$1/*.c $1/my/*.c
+./moss -d $1/sample/pa$1/*.c $1/my/pa$1/*.c
