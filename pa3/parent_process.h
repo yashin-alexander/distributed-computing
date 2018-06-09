@@ -7,5 +7,7 @@
 #include <time.h>
 
 void parent_work(InteractionInfo* interaction_info);
+
 void get_all_history_messages(AllHistory * all_history, InteractionInfo* interaction_info);
+
 void wait_children();

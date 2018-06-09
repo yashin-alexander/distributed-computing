@@ -24,10 +24,10 @@ void open_pipes(InteractionInfo* interaction_info){
     	if (i != j){
         pipe2(fds,O_NONBLOCK);
         interaction_info->s_pipes[i][j]->s_write_fd = fds[1];
-        log_pipe_open(0, i, j, interaction_info->s_pipes[i][j]->s_write_fd);
+        log_pipe(OPEN, 0, i, j, interaction_info->s_pipes[i][j]->s_write_fd);
 
         interaction_info->s_pipes[j][i]->s_read_fd = fds[0];
-        log_pipe_open(0, j, i, interaction_info->s_pipes[j][i]->s_read_fd);
+        log_pipe(OPEN, 0, j, i, interaction_info->s_pipes[j][i]->s_read_fd);
     	  }
       }
     }
@@ -42,7 +42,9 @@ pid_t* fork_processes(int process_count, InteractionInfo* interaction_info, int 
       child_work(i, interaction_info, balances[i-1]);
       exit(0);
     }
-    else if (all_pids[i]==-1){}
+    else if (all_pids[i]==-1){
+      //log_error(2);
+    }
   }
   return all_pids;
 }
@@ -55,9 +57,9 @@ void close_redundant_pipes(InteractionInfo* interaction_info){
     for (local_id j = 0; j < interaction_info->s_process_count; j++){
        if (i != j){
 	        pipe_fd = interaction_info->s_pipes[i][j];
-          log_pipe_close(id, i, j, pipe_fd->s_write_fd);
+          log_pipe(CLOSE,id, i, j, pipe_fd->s_write_fd);
     	    close(pipe_fd->s_write_fd);
-          log_pipe_close(id, i, j, pipe_fd->s_read_fd);
+          log_pipe(CLOSE, id, i, j, pipe_fd->s_read_fd);
 
     	    close(pipe_fd->s_read_fd);
        }
@@ -71,9 +73,9 @@ void close_self_pipes(InteractionInfo* interaction_info){
   for (local_id i = 0; i < interaction_info->s_process_count; i++){
     if (i != id){
       pipe_fd = interaction_info->s_pipes[id][i];
-      log_pipe_close(id, id, i, pipe_fd->s_write_fd);
+      log_pipe(CLOSE,id, id, i, pipe_fd->s_write_fd);
       close(pipe_fd->s_write_fd);
-      log_pipe_close(id, id, i, pipe_fd->s_read_fd);
+      log_pipe(CLOSE, id, id, i, pipe_fd->s_read_fd);
 
       close(pipe_fd->s_read_fd);
 	   }

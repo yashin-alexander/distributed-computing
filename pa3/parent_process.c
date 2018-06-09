@@ -5,25 +5,35 @@
 #include "ipc_manager.h"
 #include "parent_process.h"
 #include "logger.h"
+#include "lamport.h"
 
 void parent_work(InteractionInfo* interaction_info){
   local_id id = 0;
   interaction_info->s_current_id = id;
+  init_lamport_time();
   close_redundant_pipes(interaction_info);
 
+  //printf("%s\n", "parent wait start children");
+  // get all STARTED messages
   if (receive_multicast(interaction_info, STARTED) < 0){
     printf("%s\n", "all started error");
   }
+  //printf("parent time before banl %d\n", get_lamport_time());
+    //log_error(RECEIVE_MULTICAST_TYPE_ERROR);
   bank_robbery(interaction_info, interaction_info->s_process_count - 1);
+  // send STOP messages to all
+  //inc_lamport_time();
 
-  Message msg = create_message(MESSAGE_MAGIC, NULL, 0, STOP, get_physical_time());
+  Message msg = create_message(MESSAGE_MAGIC, NULL, 0, STOP, get_lamport_time());
   if(send_multicast(interaction_info, &msg)!=0){
     exit(1);
   }
 
+  //DONE MESSAGE
   if (receive_multicast(interaction_info, DONE) < 0){
     printf("%s\n", "error done");
   }
+    //log_error(RECEIVE_MULTICAST_TYPE_ERROR);
 
   AllHistory all_history;
   get_all_history_messages(&all_history, interaction_info);
@@ -32,6 +42,7 @@ void parent_work(InteractionInfo* interaction_info){
 
   close_self_pipes(interaction_info);
   print_history(&all_history);
+  //free(pipes);
 }
 
 void get_all_history_messages(AllHistory * all_history, InteractionInfo* interaction_info) {
@@ -46,16 +57,22 @@ void get_all_history_messages(AllHistory * all_history, InteractionInfo* interac
   all_history->s_history_len      = process_count - 1;
 
   for (local_id i = 0; i < process_count - 1; i++) {
-    request.s_header.s_local_time = get_physical_time();
+    //printf("listen %d for history\n",i+1 );
+    request.s_header.s_local_time = get_lamport_time();
     receive(interaction_info, i + 1, &reply);
+    //printf(" receive history from %d and is type %d\n",i+1, reply.s_header.s_type);
+    // unpack BalanceHistory struct
     BalanceHistory* history = (BalanceHistory*) reply.s_payload;
     memcpy(&all_history->s_history[i], history, sizeof(BalanceHistory));
     if (history->s_history_len > max_history_len)
         max_history_len = history->s_history_len;
+    //printf("received history time %d\n",all_history->s_history[i].s_history[0].s_time);
   }
 
+  // equile all lengths of history
   for (local_id i = 0; i < process_count - 1; i++) {
     int history_len = all_history->s_history[i].s_history_len;
+    //printf("history len %d\n",all_history->s_history[i].s_history[i].s_time );
     if (history_len < max_history_len) {
       BalanceState bs = all_history->s_history[i].s_history[history_len - 1];
 
