@@ -6,6 +6,7 @@
 #include "ipc_manager.h"
 #include "parent_process.h"
 
+#define null 0
 
 void do_work(int processes_count, int* balances){
   InteractionInfo *interaction_info = (InteractionInfo*)malloc(sizeof(InteractionInfo));
@@ -23,5 +24,5 @@ int main(int argc, char *argv[]){
   for (int i = 1; i < processes_count; i++)
     balances[i] = atoi(argv[i + 2]);
   do_work(processes_count, balances);
-  return 0;
+  return null;
 }

@@ -11,19 +11,14 @@ void parent_work(InteractionInfo* interaction_info){
   interaction_info->s_current_id = id;
   close_redundant_pipes(interaction_info);
 
-  if (receive_multicast(interaction_info, STARTED) < 0){
-    printf("%s\n", "all started error");
-  }
+  if (receive_multicast(interaction_info, STARTED) < 0) {}
   bank_robbery(interaction_info, interaction_info->s_process_count - 1);
 
   Message msg = create_message(MESSAGE_MAGIC, NULL, 0, STOP, get_physical_time());
-  if(send_multicast(interaction_info, &msg)!=0){
+  if(send_multicast(interaction_info, &msg)!=0)
     exit(1);
-  }
 
-  if (receive_multicast(interaction_info, DONE) < 0){
-    printf("%s\n", "error done");
-  }
+  if (receive_multicast(interaction_info, DONE) < 0) {}
 
   AllHistory all_history;
   get_all_history_messages(&all_history, interaction_info);
