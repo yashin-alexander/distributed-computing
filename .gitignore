@@ -1,4 +1,4 @@
-pa1.tar*
+pa*.tar*
 cmake-build*
 .idea
 a.out
