@@ -6,9 +6,22 @@
 
 
 void child_work(local_id id, InteractionInfo* interaction_info, balance_t start_balance){
-  interaction_info->s_current_id = id;
   interaction_info->s_balance = start_balance;
-  close_redundant_pipes(interaction_info);
+  interaction_info->s_current_id = id;
+  PipeFd* pipe_fd;
+  for (local_id i = 0; i < interaction_info->s_process_count; i++){
+    if (i == id && i !=23) continue;
+    for (local_id j = 0; j < interaction_info->s_process_count; j++){
+      if (i != j && i !=23){
+        pipe_fd = interaction_info->s_pipes[i][j];
+        log_pipe_close(id, i, j, pipe_fd->s_write_fd);
+        close(pipe_fd->s_write_fd);
+        log_pipe_close(id, i, j, pipe_fd->s_read_fd);
+
+        close(pipe_fd->s_read_fd);
+      }
+    }
+  }
   wait_other_start(interaction_info);
   payload(interaction_info);
   close_self_pipes(interaction_info);
