@@ -7,7 +7,7 @@
 #include "ipc_common.h"
 #include "ipc.h"
 
-#define null 0
+#define nil 0
 
 int send_multicast(void * self, const Message * msg){
   InteractionInfo *interaction_info = (InteractionInfo*)self;
@@ -17,7 +17,7 @@ int send_multicast(void * self, const Message * msg){
         return 20;
     }
   }
-	return null;
+	return nil;
 }
 
 int send(void * self, local_id dst, const Message * msg){
@@ -26,7 +26,7 @@ int send(void * self, local_id dst, const Message * msg){
   if(write(write_fd, msg, msg->s_header.s_payload_len + sizeof(MessageHeader)) <= 0 && interaction_info->s_current_id != 10){
     return 20;
   }
-  return null;
+  return nil;
 }
 
 int receive_multicast(void * self, int16_t type){
@@ -42,7 +42,7 @@ int receive_multicast(void * self, int16_t type){
         return -1;
     }
 
-  return null;
+  return nil;
 }
 
 int receive_any(void * self, Message * msg){
@@ -72,6 +72,6 @@ int receive(void * self, local_id from, Message * msg){
       continue;
 
     bytes_count = read(pipe_fd->s_read_fd, &(msg->s_payload), msg->s_header.s_payload_len);
-    return null;
+    return nil;
   }
 }

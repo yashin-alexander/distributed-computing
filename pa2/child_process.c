@@ -2,7 +2,7 @@
 #include "ipc_manager.h"
 #include "logger.h"
 
-#define null 0
+#define nil 0
 
 
 void child_work(local_id id, InteractionInfo* interaction_info, balance_t start_balance){
@@ -131,7 +131,7 @@ int handle_done_msg(InteractionInfo* interaction_info,int done_count, int proces
       return -1;
     } else {}
   }
-  return null;
+  return nil;
 }
 
 void send_history_message(InteractionInfo* interaction_info, BalanceHistory *history) {
