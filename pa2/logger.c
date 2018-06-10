@@ -1,8 +1,8 @@
 #include "logger.h"
 
 
-int pipesLog;
 int eventsLog;
+int pipesLog;
 
 void open_log_files(){
   eventsLog = open(events_log, O_CREAT | O_APPEND | O_WRONLY | O_TRUNC, 0777);
