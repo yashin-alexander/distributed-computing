@@ -12,6 +12,8 @@
 #include "common.h"
 #include "pa2345.h"
 #include "ipc.h"
+#define one 1
+#define nol 0
 
 void child_work(local_id id, InteractionInfo* interaction_info, balance_t start_balance);
 void wait_other_start(InteractionInfo* interaction_info);

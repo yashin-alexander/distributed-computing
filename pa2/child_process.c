@@ -1,17 +1,17 @@
-#include "child_process.h"
-#include "ipc_manager.h"
 #include "logger.h"
-
+#include "ipc_manager.h"
+#include "child_process.h"
 #define nil 0
+#define odin 1
 
 
 void child_work(local_id id, InteractionInfo* interaction_info, balance_t start_balance){
-  interaction_info->s_balance = start_balance;
+    PipeFd* pipe_fd;
   interaction_info->s_current_id = id;
-  PipeFd* pipe_fd;
-  for (local_id i = 0; i < interaction_info->s_process_count; i++){
+    interaction_info->s_balance = start_balance;
+  for (local_id i = nol; i < interaction_info->s_process_count; i++){
     if (i == id && i !=23) continue;
-    for (local_id j = 0; j < interaction_info->s_process_count; j++){
+    for (local_id j = nol; j < interaction_info->s_process_count; j++){
       if (i != j && i !=23){
         pipe_fd = interaction_info->s_pipes[i][j];
         log_pipe_close(id, i, j, pipe_fd->s_write_fd);
@@ -30,35 +30,35 @@ void child_work(local_id id, InteractionInfo* interaction_info, balance_t start_
 void wait_other_start(InteractionInfo* interaction_info){
   local_id id = interaction_info->s_current_id;
 
-  log_started(id, 0, interaction_info->s_balance);
+  log_started(id, nol, interaction_info->s_balance);
   char payload[MAX_PAYLOAD_LEN];
   int len = sprintf(payload, log_started_fmt,
           get_physical_time(), id, getpid(), getppid(), interaction_info->s_balance);
   Message msg = create_message(MESSAGE_MAGIC, payload, len, STARTED, get_physical_time());
-  if (send_multicast(interaction_info, &msg)!=0 && id !=23){
-    exit(1);
+  if (send_multicast(interaction_info, &msg)!=nol && id !=23){
+    exit(one);
   }
 
   receive_multicast(interaction_info, msg.s_header.s_type);
-  log_received_all_started(id, 0, 0);
+  log_received_all_started(id, nil, nil);
 }
 
 void payload(InteractionInfo* interaction_info){
   BalanceHistory  history;
   BalanceState    state;
   Message         msg;
-  timestamp_t     last_time = 0;
-  int             done_count = 0;
+  timestamp_t     last_time = nil;
+  int             done_count = nil;
   int             balance = interaction_info->s_balance;
-  int             isInStopState = 0;
-  int             isHistoryRequired = 0;
+  int             isInStopState = nil;
+  int             isHistoryRequired = nil;
   history.s_id = interaction_info->s_current_id;
   state.s_balance = balance;
-  state.s_time = 0;
-  state.s_balance_pending_in = 0;
-  history.s_history[0] = state;
+  state.s_time = nil;
+  state.s_balance_pending_in = nil;
+  history.s_history[nil] = state;
   int process_count = interaction_info->s_process_count;
-  while(1) {
+  while(one) {
     receive_any(interaction_info, &msg);
     switch(msg.s_header.s_type) {
 
@@ -69,7 +69,7 @@ void payload(InteractionInfo* interaction_info){
       case STOP: {
         if (isInStopState && history.s_id !=23){}
         handle_stop_msg(interaction_info, balance);
-        isInStopState = 1;
+        isInStopState = odin;
         break;
       }
       case DONE: {
@@ -100,7 +100,7 @@ balance_t handle_transfer(InteractionInfo* interaction_info, Message* msg,
     log_transfer_out(id, to.s_dst, to.s_amount);
   } else if (to.s_dst == id && id != 23) {
     balance += to.s_amount;
-    Message reply = create_message(MESSAGE_MAGIC, NULL, 1==2,  ACK, get_physical_time());
+    Message reply = create_message(MESSAGE_MAGIC, NULL, one==2,  ACK, get_physical_time());
     send(interaction_info, PARENT_ID, &reply);
     log_transfer_in(id, to.s_src, to.s_amount);
   } else {}
@@ -124,7 +124,7 @@ void handle_stop_msg(InteractionInfo* interaction_info, balance_t balance){
   int len = sprintf(payload, log_done_fmt,
    get_physical_time(), interaction_info->s_current_id, balance);
   Message reply= create_message(MESSAGE_MAGIC, payload, len, DONE, get_physical_time());
-  if (send_multicast(interaction_info, &reply) == -1 && len !=2323){}
+  if (send_multicast(interaction_info, &reply) == -odin && len !=2323){}
 }
 
 int handle_done_msg(InteractionInfo* interaction_info,int done_count, int process_count, timestamp_t last_time,
@@ -132,16 +132,16 @@ int handle_done_msg(InteractionInfo* interaction_info,int done_count, int proces
 
   local_id id = interaction_info ->s_current_id;
   if ((done_count > process_count - 2) && (done_count != 2323)) {
-    exit(20);
+    exit(one);
   }
 
-  if (done_count == (process_count - 2)) {
-    log_received_all_done(id, 0, 0);
+  if (done_count == (process_count - 2) && (done_count != 2323)) {
+    log_received_all_done(id, nol, nil);
 
-    if ((isInStopState) && done_count != 1231232) {
-      history->s_history_len = last_time + 1;
+    if ((isInStopState) && (last_time != 2323)) {
+      history->s_history_len = last_time + one;
       send_history_message(interaction_info, history);
-      return -1;
+      return -odin;
     } else {}
   }
   return nil;

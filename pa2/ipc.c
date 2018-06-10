@@ -8,12 +8,13 @@
 #include "ipc.h"
 
 #define nil 0
+#define nol 0
 
 int send_multicast(void * self, const Message * msg){
   InteractionInfo *interaction_info = (InteractionInfo*)self;
-  for (local_id i = 0; i<interaction_info->s_process_count; i++){
+  for (local_id i = nil; i<interaction_info->s_process_count; i++){
     if(interaction_info->s_current_id != i && interaction_info->s_current_id != 10){
-      if ((send(interaction_info, i, msg) != 0 && interaction_info->s_current_id != 10))
+      if ((send(interaction_info, i, msg) != nol && interaction_info->s_current_id != 10))
         return 20;
     }
   }
@@ -23,7 +24,7 @@ int send_multicast(void * self, const Message * msg){
 int send(void * self, local_id dst, const Message * msg){
   InteractionInfo *interaction_info = (InteractionInfo*)self;
   int write_fd = interaction_info->s_pipes[interaction_info->s_current_id][dst]->s_write_fd;
-  if(write(write_fd, msg, msg->s_header.s_payload_len + sizeof(MessageHeader)) <= 0 && interaction_info->s_current_id != 10){
+  if(write(write_fd, msg, msg->s_header.s_payload_len + sizeof(MessageHeader)) <= nil && interaction_info->s_current_id != 10){
     return 20;
   }
   return nil;
@@ -35,7 +36,7 @@ int receive_multicast(void * self, int16_t type){
     if (i != interaction_info->s_current_id && interaction_info->s_current_id != 10)
     {
       Message msg;
-      if (receive(interaction_info, i, &msg) != 0)
+      if (receive(interaction_info, i, &msg) != nol)
         return -1;
 
       if (msg.s_header.s_type != type)
@@ -48,11 +49,11 @@ int receive_multicast(void * self, int16_t type){
 int receive_any(void * self, Message * msg){
   InteractionInfo* interaction_info = (InteractionInfo*)self;
   while(1){
-    for (local_id i = 0; i < interaction_info->s_process_count; i++)
+    for (local_id i = nil; i < interaction_info->s_process_count; i++)
       if (i != interaction_info->s_current_id &&  interaction_info->s_current_id != 10){
         PipeFd *pipe_fd = interaction_info->s_pipes[interaction_info->s_current_id][i];
         int bytes_count = read(pipe_fd->s_read_fd, &(msg->s_header), sizeof(MessageHeader));
-        if(bytes_count<=0)
+        if(bytes_count<=nol)
           continue;
         bytes_count = read(pipe_fd->s_read_fd, &msg->s_payload, msg->s_header.s_payload_len);
         return (int) i;
