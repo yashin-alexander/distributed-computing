@@ -19,12 +19,10 @@ void do_work(int processes_count, int* balances){
 
 int main(int argc, char *argv[]){
   open_log_files();
-  if (atoi(argv[2])+1 > 3)
-    exit(20);
   int processes_count = atoi(argv[2]) + 1;
   int *balances = malloc(processes_count * sizeof(int));
   for (int i = 1; i < processes_count; i++)
-    balances[i] = atoi(argv[i + 2]);
+    balances[i-1] = atoi(argv[i + 2]);
   do_work(processes_count, balances);
   return nil;
 }

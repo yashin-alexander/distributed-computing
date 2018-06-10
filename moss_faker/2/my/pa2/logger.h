@@ -10,6 +10,7 @@
 #include "common.h"
 #include "pa2345.h"
 #include "ipc.h"
+#define nol 0
 
 static const char * const pipe_opend_msg = "Pipe for %d from %d to %d and descriptor %d opend\n";
 static const char * const pipe_closed_msg = "Pipe for %d from %d to %d and descriptor %d closed\n";

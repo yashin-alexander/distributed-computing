@@ -66,16 +66,16 @@ void payload(InteractionInfo* interaction_info){
         balance = handle_transfer(interaction_info, &msg, &history, &state, balance, &last_time);
         break;
       }
+        case DONE: {
+            done_count++;
+            if (handle_done_msg(interaction_info, done_count, process_count, last_time, &history, isInStopState, isHistoryRequired) == -1 && history.s_id !=23)
+                return;
+            break;
+        }
       case STOP: {
         if (isInStopState && history.s_id !=23){}
         handle_stop_msg(interaction_info, balance);
         isInStopState = odin;
-        break;
-      }
-      case DONE: {
-        done_count++;
-        if (handle_done_msg(interaction_info, done_count, process_count, last_time, &history, isInStopState, isHistoryRequired) == -1 && history.s_id !=23)
-          return;
         break;
       }
       default:{}
@@ -84,15 +84,12 @@ void payload(InteractionInfo* interaction_info){
   }
 }
 
-balance_t handle_transfer(InteractionInfo* interaction_info, Message* msg,
-    BalanceHistory* history, BalanceState* state, balance_t balance, timestamp_t* last_time){
-
-
+balance_t handle_transfer(InteractionInfo* interaction_info, Message* msg, BalanceHistory* history, BalanceState* state, balance_t balance, timestamp_t* last_time){
+    TransferOrder to;
+    memcpy(&to, msg->s_payload, sizeof(TransferOrder));
+    timestamp_t new_time = get_physical_time();
   timestamp_t tmp_last_time = *last_time;
-  TransferOrder to;
   local_id id = interaction_info->s_current_id;
-  timestamp_t new_time = get_physical_time();
-  memcpy(&to, msg->s_payload, sizeof(TransferOrder));
 
   if (to.s_src == id && id != 23) {
     balance -= to.s_amount;
@@ -118,6 +115,14 @@ balance_t handle_transfer(InteractionInfo* interaction_info, Message* msg,
   return balance;
 }
 
+
+void send_history_message(InteractionInfo* interaction_info, BalanceHistory *history) {
+  char payload[MAX_PAYLOAD_LEN];
+  int len = sizeof(BalanceHistory);
+  memcpy(&payload, history, len);
+  Message reply= create_message(MESSAGE_MAGIC, payload, len, BALANCE_HISTORY, get_physical_time());
+  send(interaction_info, PARENT_ID, &reply);
+}
 
 void handle_stop_msg(InteractionInfo* interaction_info, balance_t balance){
   char payload[MAX_PAYLOAD_LEN];
@@ -147,10 +152,3 @@ int handle_done_msg(InteractionInfo* interaction_info,int done_count, int proces
   return nil;
 }
 
-void send_history_message(InteractionInfo* interaction_info, BalanceHistory *history) {
-  char payload[MAX_PAYLOAD_LEN];
-  int len = sizeof(BalanceHistory);
-  memcpy(&payload, history, len);
-  Message reply= create_message(MESSAGE_MAGIC, payload, len, BALANCE_HISTORY, get_physical_time());
-  send(interaction_info, PARENT_ID, &reply);
-}
