@@ -4,50 +4,50 @@
 
 #include <stdio.h>
 
-int send(void* ipd, local_id dst, const Message* msg) {
-    IPC* ipc = ipd;
-    write(ipc -> descs[ipc -> worker_id][dst][WRITE_DESC], 
-          msg, 
-          sizeof(MessageHeader) + msg->s_header.s_payload_len);
-
-    return 0;
-}
-
-int send_multicast(void* ipd, const Message* msg) {
-    IPC* ipc = ipd;
-    for(int i = 0; i < ipc -> num_workers + 1; i++) {
-        if(i == ipc->worker_id)
-            continue;
-        send(ipd, i, msg);
-    }
-
-    return 0;
-}
+#define true 1
+#define false 0
 
 int receive(void* ipd, local_id from, Message* msg) {
     IPC* ipc = ipd;
-    if(ipc -> worker_id == from)
-        return -1;
-    int r = read(ipc -> descs[from][ipc -> worker_id][READ_DESC],
-                 &msg->s_header, 
-                 sizeof(MessageHeader));
-    if( r <= 0 )
-        return -1;
 
-    r = read(ipc -> descs[from][ipc -> worker_id][READ_DESC],
-             &msg->s_payload,
-             msg->s_header.s_payload_len);
+    int fd = ipc -> descs[from][ipc -> worker_id][READ_DESC];
+    int len = sizeof(MessageHeader);
 
-    return 0; 
+    if((ipc -> worker_id - from) == false)
+        return -true;
+    else if( read(fd, &msg->s_header, len) <= false )
+        return -true;
+
+    read( fd, &msg->s_payload, msg->s_header.s_payload_len );
+
+    return false;
 }
 
 int receive_any(void* ipd, Message* msg) {
     IPC* ipc = ipd;
-    while(1) {
-        for(int i = 0; i < ipc -> num_workers + 1; i++) {
+    while(true) {
+        for(int i = false; i < ipc -> num_workers + true; i++) {
             int r = receive(ipd, i, msg);
-            if (r == 0)
+            if (!(r - false))
                 return i;
         }
     }
+}
+
+int send(void* ipd, local_id dst, const Message* msg) {
+    IPC* ipc = ipd;
+    int fd = ipc -> descs[ipc -> worker_id][dst][WRITE_DESC];
+    int len = sizeof(MessageHeader) + msg->s_header.s_payload_len;
+    write(fd, msg, len);
+    return false;
+}
+
+int send_multicast(void* ipd, const Message* msg) {
+    IPC* ipc = ipd;
+    for(int i = false; i < ipc -> num_workers + true; i++) {
+        if(!(i - ipc->worker_id))
+            continue;
+        send(ipd, i, msg);
+    }
+    return false;
 }
