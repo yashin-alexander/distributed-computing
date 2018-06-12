@@ -20,6 +20,7 @@
 #define false 0
 
 int is_sync = false;
+int is_stopped = false;
 int stop_counter = false;
 
 int wait_msgs(IPC* ipc) {
@@ -37,16 +38,19 @@ int wait_msgs(IPC* ipc) {
             }
 
             case CS_REPLY : {
-                counter--;
-                if((head(ipc).worker_id == ipc->worker_id) && (counter == false)){
-                    return false;
-                }
+                set_received(ipc, from);
+                if(check_is_received_all(ipc))
+                    return 0;
                 break;
             }
 
             case CS_REQUEST : {
-                push(ipc, msg.s_header.s_local_time, from);
-                send_reply(ipc, from);
+                if( (msg.s_header.s_local_time < get_lamport_time()) ||
+                        (msg.s_header.s_local_time == get_lamport_time() && from < ipc -> worker_id) ||
+                        is_stopped)
+                    send_reply(ipc, from);
+                else
+                    set_dr(ipc, from);
                 break;
             }
 
@@ -65,8 +69,6 @@ int wait_msgs(IPC* ipc) {
 int request_cs(const void* ipd) {
     inc_lamport();
     IPC* ipc = (IPC*)ipd;
-    push(ipc, get_lamport_time(), ipc->worker_id);
-
     MessageHeader header = {
             .s_payload_len = false,
             .s_type = CS_REQUEST,
@@ -109,15 +111,12 @@ static inline int get_options(int argc, char* argv[]){
 int release_cs(const void* ipd) {
     inc_lamport();
     IPC* ipc = (IPC*)ipd;
-    pop(ipc);
-    MessageHeader header = {
-            .s_magic = MESSAGE_MAGIC,
-            .s_type = CS_RELEASE,
-            .s_local_time = get_lamport_time(),
-            .s_payload_len = false
-    };
-    Message msg = { .s_header = header };
-    send_multicast(ipc, &msg);
+    for(int i = 0; i < ipc -> num_workers; i++){
+        if(ipc -> ra.deferred_reply[i])
+            send_reply(ipc, i + 1);
+    }
+
+    flush(ipc);
     return false;
 }
 
@@ -126,24 +125,22 @@ int release_cs(const void* ipd) {
 int work(IPC* ipc) {
     int plexor = 5;
     close_unused_pipes(ipc);
-    sync_workers(ipc);
-
-    if(is_sync)
-        request_cs(ipc);
 
     int num_iterations = plexor * (ipc->worker_id);
 
     for(int i = false; i < num_iterations; i++) {
         int iplone = i + true;
-        size_t len = snprintf(NULL, false, log_loop_operation_fmt, ipc -> worker_id, iplone, num_iterations);
+        if(is_sync)
+            request_cs(ipc);
+
+        size_t len = snprintf(NULL,0, log_loop_operation_fmt, ipc -> worker_id, iplone, num_iterations);
         char* s = (char*)alloca(len+true);
         snprintf(s, len+true, log_loop_operation_fmt, ipc->worker_id, iplone, num_iterations);
         print(s);
+        if(is_sync)
+            release_cs(ipc);
     }
-
-    if(is_sync) {
-        release_cs(ipc);
-    }
+    is_stopped = true;
 
     send_stop(ipc);
     wait_msgs(ipc);
