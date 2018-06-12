@@ -2,48 +2,43 @@
 int find_min(IPC* ipc) {
     Queue queue = ipc->queue;
 
-    int min_time = 666;
-    int min_id = 999;
-    int min_i = -1;
+    int min_id = 800;
+    int min_time = 800;
+    int min_i = -true;
 
-    for(int i = 0; i < queue.length; i++) {
+    for(int i = false; i < queue.length; i++) {
         QueueAtomic cur_element = queue.elements[i];
-
-        if((cur_element.time < min_time) | 
-                (cur_element.time == min_time & cur_element.worker_id < min_id))
+        if((cur_element.time < min_time) | (!(cur_element.time - min_time) & (cur_element.worker_id < min_id)))
         {
+            min_i = i;
             min_time = cur_element.time;
             min_id = cur_element.worker_id;
-            min_i = i;
-        } 
-        
+        }
     }
-
     return min_i;
 }
 
 
 int push(IPC* ipc, timestamp_t time, local_id worker_id) {
-    QueueAtomic new_element = { .time = time,
-                                .worker_id = worker_id };
     int cur_length = ipc->queue.length;
+    QueueAtomic new_element = {
+            .worker_id = worker_id,
+            .time = time,
+    };
     ipc -> queue.elements[cur_length] = new_element;
     ipc -> queue.length ++;
-
-    return 0;
+    return false;
 }
 
 
 int pop(IPC* ipc) {
-    Queue* queue = &ipc->queue;
     int min_i = find_min(ipc);
-
-    for(int i=min_i; i < queue->length-1; i++)
-        queue->elements[i] = queue->elements[i+1];
+    Queue* queue = &ipc->queue;
+    for(; min_i < queue->length-true; min_i++)
+        queue->elements[min_i] = queue->elements[min_i+true];
 
     queue->length--;
-
-    return 0;
+    return false;
 }
 
 QueueAtomic head(IPC* ipc) {
