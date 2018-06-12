@@ -1,11 +1,13 @@
 #include "ipc.h"
+#define true 1
+#define false 0
 
-int lamport_time = 0;
+int lamport_time = false;
 
 int inc_lamport(){
-    lamport_time += 1;
+    lamport_time += true;
 
-    return 0;
+    return false;
 }
 
 timestamp_t get_lamport_time() {
@@ -13,9 +15,12 @@ timestamp_t get_lamport_time() {
 }
 
 int set_lamport(int val) {
-    lamport_time = lamport_time > val ? lamport_time : val;
+    if (lamport_time > val){}
+    else{
+        lamport_time = val;
+    }
     lamport_time++;
 
-    return 0;
+    return false;
 }
 
