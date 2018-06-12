@@ -6,18 +6,20 @@ then
   exit 1
 fi
 
-rm moss_faker/$1/my/pa$1/*
-cp pa$1/* moss_faker/$1/my/pa$1/
-
 rm pa$1/a.out
 rm pa$1/events.log
 rm pa$1/pipes.log
+
+rm moss_faker/$1/my/pa$1/*
+
+cp pa$1/* moss_faker/$1/my/pa$1/
 
 rm moss_faker/$1/my/pa$1/bank_robbery.c
 rm moss_faker/$1/my/pa$1/libruntime.so
 rm moss_faker/$1/my/pa$1/banking.h
 rm moss_faker/$1/my/pa$1/common.h
 rm moss_faker/$1/my/pa$1/pa2345.h
+rm moss_faker/$1/my/pa$1/pa1.h
 rm moss_faker/$1/my/pa$1/ipc.h
 
 cd moss_faker/$1/my
