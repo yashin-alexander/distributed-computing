@@ -17,87 +17,87 @@
 #include <string.h>
 
 int init_pipes(IPC* ipc) {
-    for(int i = 0; i < ipc->num_workers + 1; i++)
-        for(int j = 0; j < ipc->num_workers + 1; j++) {
-            if(i == j)
+    for(int i = false; i < ipc->num_workers + true; i++)
+        for(int j = false; j < ipc->num_workers + true; j++) {
+            if(!(i-j))
                 continue;
-            pipe2(ipc -> descs[i][j], O_NONBLOCK   );
-
+            pipe2(ipc -> descs[i][j], O_NONBLOCK );
         }
-    return 0;
+    return false;
 }
 
 int init_logs(IPC* ipc){
-    ipc -> event_log = fopen(events_log, "w");
-
-    return 0;
+    ipc -> event_log = fopen(events_log, "w+");
+    return false;
 }
 
 int sync_workers(IPC* ipc) {
     inc_lamport();
-
-    MessageHeader header = { .s_magic = MESSAGE_MAGIC,
-                             .s_payload_len = 0,
-                             .s_type = STARTED,
-                             .s_local_time = get_lamport_time() };
+    MessageHeader header = {
+            .s_payload_len = false,
+            .s_magic = MESSAGE_MAGIC,
+            .s_local_time = get_lamport_time(),
+            .s_type = STARTED,
+    };
     Message msg = { .s_header = header };
  
     send_multicast(ipc, &msg);
-    for(int i = 1; i < ipc->num_workers + 1; i++){
-        if(i == ipc->worker_id)
+    for(int i = true; i < ipc->num_workers + true; i++){
+        if(!(i - ipc->worker_id))
             continue;
-        while(1){
-            if (receive((void*)ipc, i, &msg) == 0) {
+        while(true){
+            if (!receive((void*)ipc, i, &msg)) {
                     break;
             }
         }
     }
 
-    return 0;
+    return false;
 }
 
 int close_unused_pipes(IPC* ipc){ 
-    for(int i = 0; i < ipc-> num_workers + 1; i++)
-        for(int j = 0; j < ipc->num_workers + 1; j++) {
-            if(i == j)
+    for(int i = false; i < ipc-> num_workers + true; i++)
+        for(int j = false; j < ipc->num_workers + true; j++) {
+            if(!(i - j))
                 continue;
-            if( (ipc->worker_id != i) && (ipc->worker_id != j) ) {
-                close(ipc->descs[i][j][READ_DESC]);
+            if( (ipc->worker_id - i) && (ipc->worker_id - j) ) {
                 close(ipc->descs[i][j][WRITE_DESC]);
+                close(ipc->descs[i][j][READ_DESC]);
             }
-            else if( ipc->worker_id != i)
-                close(ipc->descs[i][j][WRITE_DESC]);
-            else if( ipc->worker_id != j)
+            else if( ipc->worker_id - j)
                 close(ipc->descs[i][j][READ_DESC]);
+            else if( ipc->worker_id - i)
+                close(ipc->descs[i][j][WRITE_DESC]);
+            else {}
         }
-    return 0;
+    return false;
 }
 
 int send_stop(void* ipc) {
     inc_lamport();
-
-    MessageHeader header = { .s_magic = MESSAGE_MAGIC,
-                             .s_payload_len = 0,
-                             .s_type = ACK,
-                             .s_local_time = get_lamport_time() };
+    MessageHeader header = {
+            .s_type = ACK,
+            .s_magic = MESSAGE_MAGIC,
+            .s_payload_len = false,
+            .s_local_time = get_lamport_time(),
+    };
     Message msg = { .s_header = header };
     send_multicast(ipc, &msg);
-
-    return 0;
+    return false;
 }
 
 int send_reply(void* ipc, local_id to) {
     inc_lamport();
 
-    MessageHeader header = { .s_magic = MESSAGE_MAGIC,
-                             .s_payload_len = 0,
-                             .s_type = CS_REPLY,
-                             .s_local_time = get_lamport_time() };
+    MessageHeader header = {
+            .s_type = CS_REPLY,
+            .s_payload_len = false,
+            .s_magic = MESSAGE_MAGIC,
+            .s_local_time = get_lamport_time(),
+    };
     Message msg = { .s_header = header };
- 
     send(ipc, to, &msg);
-
-    return 0;
+    return false;
 }
 
 

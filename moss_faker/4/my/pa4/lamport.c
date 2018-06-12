@@ -15,7 +15,10 @@ timestamp_t get_lamport_time() {
 }
 
 int set_lamport(int val) {
-    lamport_time = lamport_time > val ? lamport_time : val;
+    if (lamport_time > val){}
+    else{
+        lamport_time = val;
+    }
     lamport_time++;
 
     return false;
