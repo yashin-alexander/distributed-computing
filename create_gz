@@ -16,7 +16,6 @@ cp pa$1/* moss_faker/$1/my/pa$1/
 
 rm moss_faker/$1/my/pa$1/bank_robbery.c
 rm moss_faker/$1/my/pa$1/libruntime.so
-rm moss_faker/$1/my/pa$1/banking.h
 rm moss_faker/$1/my/pa$1/common.h
 rm moss_faker/$1/my/pa$1/pa2345.h
 rm moss_faker/$1/my/pa$1/pa1.h
@@ -29,7 +28,6 @@ mv pa$1.tar.gz ../../../archives/
 
 rm moss_faker/$1/sample/pa$1/bank_robbery.c
 rm moss_faker/$1/sample/pa$1/libruntime.so
-rm moss_faker/$1/sample/pa$1/banking.h
 rm moss_faker/$1/sample/pa$1/common.h
 rm moss_faker/$1/sample/pa$1/pa2345.h
 rm moss_faker/$1/sample/pa$1/ipc.h
