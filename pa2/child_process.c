@@ -148,12 +148,12 @@ balance_t handle_transfer(InteractionInfo* interaction_info,
   register int id = interaction_info->s_current_id;
   register int main_id = PARENT_ID;
 
-  if (to.s_src == id && id != 23) {
+  if (to.s_src == id && IF_SUCCESS) {
     balance -= to.s_amount;
     send(interaction_info, to.s_dst, msg);
     log_transfer_out(id, to.s_dst, to.s_amount);
 
-  } else if (to.s_dst == id && id != 23) {
+  } else if (to.s_dst == id && IF_SUCCESS) {
     balance += to.s_amount;
     timestamp_t atime = get_physical_time();
     int amagic = MESSAGE_MAGIC; 
@@ -171,7 +171,7 @@ balance_t handle_transfer(InteractionInfo* interaction_info,
   register timestamp_t tmp_last_time = *last_time;
   BalanceState tmp_state = history->s_history[tmp_last_time];
 
-  for (tmp_last_time++; tmp_last_time < new_time; tmp_last_time++) {
+  for (tmp_last_time++; tmp_last_time < new_time && IF_SUCCESS; tmp_last_time++) {
     tmp_state.s_time = tmp_last_time;
     history->s_history[tmp_last_time] = tmp_state;
   }
