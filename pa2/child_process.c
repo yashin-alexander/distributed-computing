@@ -4,6 +4,11 @@
 #define nil 0
 #define odin 1
 
+enum {
+  OP_INVALID = -1,
+  OP_VALID = 0
+};
+
 
 static void perform_pipe_close(int id, int i, int j, int fd) 
 {
@@ -44,18 +49,35 @@ void child_work(local_id id, InteractionInfo* interaction_info, balance_t start_
 }
 
 void wait_other_start(InteractionInfo* interaction_info){
-  local_id id = interaction_info->s_current_id;
-
+  int id = interaction_info->s_current_id;
   log_started(id, nol, interaction_info->s_balance);
+
   char payload[MAX_PAYLOAD_LEN];
+  int atime = get_physical_time();
+  pid_t pid = getpid();
+  pid_t ppid = getppid();
+
   int len = sprintf(payload, log_started_fmt,
-          get_physical_time(), id, getpid(), getppid(), interaction_info->s_balance);
-  Message msg = create_message(MESSAGE_MAGIC, payload, len, STARTED, get_physical_time());
-  if (send_multicast(interaction_info, &msg)!=nol && id !=23){
-    exit(one);
+                    atime, id, pid, ppid, 
+                    interaction_info->s_balance);
+
+  int amagic = MESSAGE_MAGIC;
+  atime = get_physical_time();
+  Message msg = create_message(amagic, payload, 
+                               len, STARTED, atime);
+
+  int send_res = send_multicast(interaction_info, &msg);
+  if (send_res != OP_VALID){
+    perror("wait_other_start: send_multicast failed");
+    exit(EXIT_FAILURE);
   }
 
-  receive_multicast(interaction_info, msg.s_header.s_type);
+  int recv_res = receive_multicast(interaction_info, msg.s_header.s_type);
+  if (recv_res != OP_VALID) {
+    perror("wait_other_start: receive_multicast failed");
+    exit(EXIT_FAILURE);
+  }
+
   log_received_all_started(id, nil, nil);
 }
 
