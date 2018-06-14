@@ -5,23 +5,39 @@
 #define odin 1
 
 
-void child_work(local_id id, InteractionInfo* interaction_info, balance_t start_balance){
-    PipeFd* pipe_fd;
-  interaction_info->s_current_id = id;
-    interaction_info->s_balance = start_balance;
-  for (local_id i = nol; i < interaction_info->s_process_count; i++){
-    if (i == id && i !=23) continue;
-    for (local_id j = nol; j < interaction_info->s_process_count; j++){
-      if (i != j && i !=23){
-        pipe_fd = interaction_info->s_pipes[i][j];
-        log_pipe_close(id, i, j, pipe_fd->s_write_fd);
-        close(pipe_fd->s_write_fd);
-        log_pipe_close(id, i, j, pipe_fd->s_read_fd);
+static void perform_pipe_close(int id, int i, int j, int fd) 
+{
+  close(fd);
+  log_pipe_close(id, i, j, fd);
+}
 
-        close(pipe_fd->s_read_fd);
+
+static void close_unused_pipes(InteractionInfo* info)
+{
+  PipeFd* pipe_fd;
+  int id = info->s_current_id;
+  int const pcount = info->s_process_count;
+
+  for (int i = nol; i < pcount; i++){
+    if (i == id) continue;
+
+    for (int j = nol; j < pcount; j++){
+      if (i != j) {
+        pipe_fd = info->s_pipes[i][j];
+        perform_pipe_close(id, i, j, pipe_fd->s_write_fd);
+        perform_pipe_close(id, i, j, pipe_fd->s_read_fd);
       }
     }
   }
+}
+
+
+void child_work(local_id id, InteractionInfo* interaction_info, balance_t start_balance){
+  interaction_info->s_balance = start_balance;
+  interaction_info->s_current_id = id;
+
+  close_unused_pipes(interaction_info);
+
   wait_other_start(interaction_info);
   payload(interaction_info);
   close_self_pipes(interaction_info);
