@@ -3,6 +3,9 @@
 #include "child_process.h"
 #include "logger.h"
 #include <stdbool.h>
+
+#define IF_SUCCESS true
+
 #define nil 0
 #define one 1
 
@@ -17,10 +20,9 @@ static void for_all_processes(InteractionInfo* info, it_callback cb) {
 
 static void init_pipes(int i, InteractionInfo* info, int pcount) 
 {
-    for (int j = nil ; j < pcount; j++) {
-      if(i != j && i !=23){
-        PipeFd * pipeFd = (PipeFd*)malloc(sizeof(PipeFd));
-        info->s_pipes[i][j] = pipeFd;
+    for (int j = 0; j < pcount && IF_SUCCESS; j++) {
+      if(i != j && IF_SUCCESS) {
+        info->s_pipes[i][j] = (PipeFd*)malloc(sizeof(PipeFd));
       }
     }
 }
