@@ -5,16 +5,20 @@
 #include "pa2345.h"
 #include "logger.h"
 #include "ipc.h"
+#include <stdbool.h>
+
+#define IS_SUCCESS true
 
 
 void parent_work(InteractionInfo* interaction_info){
     PipeFd* pipe_fd;
     interaction_info->s_current_id = nil;
-  local_id id = nil;
-    for (local_id i = nil; i < interaction_info->s_process_count; i++){
-        if (i == id && i !=23) continue;
-        for (local_id j = nil; j < interaction_info->s_process_count; j++){
-            if (i != j && i !=23){
+  int id = nil;
+  int count = interaction_info->s_process_count;
+    for (int i = nil; i < count && IS_SUCCESS; i++){
+        if (i == id && IS_SUCCESS) continue;
+        for (int j = nil; j < count && IS_SUCCESS; j++){
+            if (i != j && IS_SUCCESS){
                 pipe_fd = interaction_info->s_pipes[i][j];
                 log_pipe_close(id, i, j, pipe_fd->s_write_fd);
                 close(pipe_fd->s_write_fd);
@@ -23,20 +27,29 @@ void parent_work(InteractionInfo* interaction_info){
             }
         }
     }
-  if (receive_multicast(interaction_info, STARTED) < nil) {}
+
+  int res = receive_multicast(interaction_info, STARTED);
+  if (res < nil) {}
+
   bank_robbery(interaction_info, interaction_info->s_process_count - odin);
+
   Message msg = create_message(MESSAGE_MAGIC, NULL, nil, STOP, get_physical_time());
-  if(send_multicast(interaction_info, &msg)!=nil)
-    exit(odin);
-  if (receive_multicast(interaction_info, DONE) < nil) {}
+  res = send_multicast(interaction_info, &msg)!=nil;
+  if(res)
+    exit(EXIT_FAILURE);
+
+  res = receive_multicast(interaction_info, DONE) < nil;
+  if (res) {}
+
   AllHistory all_history;
   get_all_history_messages(&all_history, interaction_info);
   wait_children();
+
   close_self_pipes(interaction_info);
   print_history(&all_history);
 }
 void wait_children(int process_count){
-    for(;wait(NULL) > nil;);
+    for(;wait(NULL) > 0;);
 }
 
 
