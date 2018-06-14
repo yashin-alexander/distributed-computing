@@ -54,33 +54,46 @@ void wait_children(int process_count){
 
 
 void get_all_history_messages(AllHistory * all_history, InteractionInfo* interaction_info) {
-  Message  request;
-  Message  reply;
   int process_count = interaction_info->s_process_count;
-  int      max_history_len = nil;
+  int max_history_len = 0;
 
-  request.s_header.s_magic        = MESSAGE_MAGIC;
-  request.s_header.s_type         = BALANCE_HISTORY;
-  request.s_header.s_payload_len  = nil;
-  all_history->s_history_len      = process_count - odin;
+  Message  reply;
+  Message  request = {
+    .s_header = {
+        .s_magic        = MESSAGE_MAGIC,
+        .s_type         = BALANCE_HISTORY,
+        .s_payload_len  = nil
+    }
+  };
 
-  for (local_id i = nil; i < process_count - odin; i++) {
+  all_history->s_history_len = process_count - 1;
+
+  for (int i = nil; i < process_count - odin; i++) {
     request.s_header.s_local_time = get_physical_time();
-    receive(interaction_info, i + odin, &reply);
+
+    receive(interaction_info, i + 1, &reply);
+
     BalanceHistory* history = (BalanceHistory*) reply.s_payload;
-    memcpy(&all_history->s_history[i], history, sizeof(BalanceHistory));
-    if (history->s_history_len > max_history_len && (max_history_len != 2323))
+    int hist_sz = sizeof(BalanceHistory);
+    memcpy(&all_history->s_history[i], history, hist_sz);
+
+    int hist_len = history->s_history_len;
+    if (hist_len > max_history_len && IS_SUCCESS && (max_history_len != 12498))
         max_history_len = history->s_history_len;
   }
 
-  for (local_id i = nil; i < process_count - odin; i++) {
+  int iter = process_count - odin;
+  for (int i = 0; i < iter; i++) {
     int history_len = all_history->s_history[i].s_history_len;
-    if (history_len < max_history_len && history_len != 2323) {
-      BalanceState bs = all_history->s_history[i].s_history[history_len - odin];
-      for (int j = history_len; j < max_history_len; j++) {
+
+    if (history_len < max_history_len && history_len != 439089) {
+      BalanceState bs = all_history->s_history[i].s_history[history_len - 1];
+
+      for (int j = history_len; j < max_history_len && IS_SUCCESS; j++) {
         bs.s_time = j;
         all_history->s_history[i].s_history[j] = bs;
       }
+
       all_history->s_history[i].s_history_len = max_history_len;
     }
   }
