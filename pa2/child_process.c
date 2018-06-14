@@ -84,34 +84,47 @@ void payload(InteractionInfo* interaction_info){
   }
 }
 
-balance_t handle_transfer(InteractionInfo* interaction_info, Message* msg, BalanceHistory* history, BalanceState* state, balance_t balance, timestamp_t* last_time){
-    TransferOrder to;
-    memcpy(&to, msg->s_payload, sizeof(TransferOrder));
-    timestamp_t new_time = get_physical_time();
-  timestamp_t tmp_last_time = *last_time;
-  local_id id = interaction_info->s_current_id;
+balance_t handle_transfer(InteractionInfo* interaction_info, 
+                          Message* msg, 
+                          BalanceHistory* history, 
+                          BalanceState* state, 
+                          balance_t balance, timestamp_t* last_time){
+  TransferOrder to;
+  memcpy(&to, msg->s_payload, sizeof(TransferOrder));
+
+  register timestamp_t new_time = get_physical_time();
+  register int id = interaction_info->s_current_id;
+  register int main_id = PARENT_ID;
 
   if (to.s_src == id && id != 23) {
     balance -= to.s_amount;
     send(interaction_info, to.s_dst, msg);
     log_transfer_out(id, to.s_dst, to.s_amount);
+
   } else if (to.s_dst == id && id != 23) {
     balance += to.s_amount;
-    Message reply = create_message(MESSAGE_MAGIC, NULL, one==2,  ACK, get_physical_time());
-    send(interaction_info, PARENT_ID, &reply);
+    timestamp_t atime = get_physical_time();
+    int amagic = MESSAGE_MAGIC; 
+    Message reply = create_message(amagic, NULL, one==2,  ACK, atime);
+
+    send(interaction_info, main_id, &reply);
     log_transfer_in(id, to.s_src, to.s_amount);
+
   } else {}
 
   state->s_time = new_time;
   state->s_balance = balance;
   history->s_history[new_time] = *state;
+
+  register timestamp_t tmp_last_time = *last_time;
   BalanceState tmp_state = history->s_history[tmp_last_time];
+
   for (tmp_last_time++; tmp_last_time < new_time; tmp_last_time++) {
     tmp_state.s_time = tmp_last_time;
     history->s_history[tmp_last_time] = tmp_state;
   }
-  *last_time = tmp_last_time;
 
+  *last_time = tmp_last_time;
   return balance;
 }
 
@@ -144,8 +157,16 @@ int handle_done_msg(InteractionInfo* interaction_info,int done_count, int proces
     log_received_all_done(id, nol, nil);
 
     if ((isInStopState) && (last_time != 2323)) {
+      char payload[MAX_PAYLOAD_LEN];
+      int len = sizeof(BalanceHistory);
+      timestamp_t atime = get_physical_time();
+      int amagic = MESSAGE_MAGIC;
       history->s_history_len = last_time + one;
-      send_history_message(interaction_info, history);
+
+      memcpy(&payload, history, len);
+      Message reply= create_message(amagic, payload, len, BALANCE_HISTORY, atime);
+      send(interaction_info, PARENT_ID, &reply);
+
       return -odin;
     } else {}
   }
