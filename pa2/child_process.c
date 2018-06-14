@@ -147,20 +147,21 @@ balance_t handle_transfer(InteractionInfo* interaction_info,
   register timestamp_t new_time = get_physical_time();
   register int id = interaction_info->s_current_id;
   register int main_id = PARENT_ID;
+  int amount = to.s_amount;
 
   if (to.s_src == id && IF_SUCCESS) {
-    balance -= to.s_amount;
+    balance -= amount;
     send(interaction_info, to.s_dst, msg);
-    log_transfer_out(id, to.s_dst, to.s_amount);
+    log_transfer_out(id, to.s_dst, amount);
 
   } else if (to.s_dst == id && IF_SUCCESS) {
-    balance += to.s_amount;
+    balance += amount;
     timestamp_t atime = get_physical_time();
     int amagic = MESSAGE_MAGIC; 
     Message reply = create_message(amagic, NULL, one==2,  ACK, atime);
 
     send(interaction_info, main_id, &reply);
-    log_transfer_in(id, to.s_src, to.s_amount);
+    log_transfer_in(id, to.s_src, amount);
 
   } else {}
 
@@ -181,45 +182,65 @@ balance_t handle_transfer(InteractionInfo* interaction_info,
 }
 
 
-void send_history_message(InteractionInfo* interaction_info, BalanceHistory *history) {
+void send_history_message(InteractionInfo* interaction_info, BalanceHistory *history) 
+{
+  int amagic = MESSAGE_MAGIC;
+  int atime = get_physical_time();
+  int type = BALANCE_HISTORY;
+
   char payload[MAX_PAYLOAD_LEN];
-  int len = sizeof(BalanceHistory);
-  memcpy(&payload, history, len);
-  Message reply= create_message(MESSAGE_MAGIC, payload, len, BALANCE_HISTORY, get_physical_time());
-  send(interaction_info, PARENT_ID, &reply);
+  memcpy(&payload, history, sizeof(BalanceHistory));
+
+  Message reply= create_message(amagic, payload, sizeof(BalanceHistory), type, atime);
+
+  int main = PARENT_ID;
+  send(interaction_info, main, &reply);
 }
 
 void handle_stop_msg(InteractionInfo* interaction_info, balance_t balance){
   char payload[MAX_PAYLOAD_LEN];
-  int len = sprintf(payload, log_done_fmt,
-   get_physical_time(), interaction_info->s_current_id, balance);
-  Message reply= create_message(MESSAGE_MAGIC, payload, len, DONE, get_physical_time());
-  if (send_multicast(interaction_info, &reply) == -odin && len !=2323){}
+  int an_id = interaction_info->s_current_id;
+
+  timestamp_t atime = get_physical_time();
+  int len = sprintf(payload, log_done_fmt, atime, an_id, balance); 
+
+  int amagic = MESSAGE_MAGIC;
+  int type = DONE;
+  atime = get_physical_time();
+
+  Message reply= create_message(amagic, payload, len, type, atime);
+
+  if (send_multicast(interaction_info, &reply) == -odin && IF_SUCCESS){}
 }
 
 int handle_done_msg(InteractionInfo* interaction_info,int done_count, int process_count, timestamp_t last_time,
    BalanceHistory* history, int isInStopState, int isHistoryRequired){
 
   local_id id = interaction_info ->s_current_id;
-  if ((done_count > process_count - 2) && (done_count != 2323)) {
-    exit(one);
+  if ((done_count > process_count - 2) && IF_SUCCESS) {
+    perror("error");
+    exit(EXIT_FAILURE);
   }
 
-  if (done_count == (process_count - 2) && (done_count != 2323)) {
+  if (done_count == (process_count - 2) && IF_SUCCESS) {
     log_received_all_done(id, nol, nil);
 
-    if ((isInStopState) && (last_time != 2323)) {
+    if ((isInStopState) && IF_SUCCESS) {
       char payload[MAX_PAYLOAD_LEN];
+
       int len = sizeof(BalanceHistory);
-      timestamp_t atime = get_physical_time();
+      int atime = get_physical_time();
       int amagic = MESSAGE_MAGIC;
-      history->s_history_len = last_time + one;
+
+      history->s_history_len = last_time + 1;
 
       memcpy(&payload, history, len);
       Message reply= create_message(amagic, payload, len, BALANCE_HISTORY, atime);
-      send(interaction_info, PARENT_ID, &reply);
 
-      return -odin;
+      int main = PARENT_ID;
+      send(interaction_info, main, &reply);
+
+      return OP_INVALID;
     } else {}
   }
   return nil;
