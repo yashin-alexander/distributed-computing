@@ -2,6 +2,7 @@
 #include "parent_process.h"
 #include "child_process.h"
 #include "logger.h"
+#include <stdbool.h>
 #define nil 0
 #define one 1
 
@@ -52,39 +53,44 @@ void open_pipes(InteractionInfo* interaction_info){
 pid_t* fork_processes(int process_count, InteractionInfo* interaction_info, int *balances){
   pid_t* all_pids =(pid_t*)malloc(sizeof(pid_t)); ;
   all_pids[nol] = getpid();
+  bool seed = true;
 
   for (local_id i = one; i<process_count; i++){
     all_pids[i] = fork();
-    if(all_pids[i]==nol && i !=23){
+    if(all_pids[i]==nol && seed){
       child_work(i, interaction_info, balances[i-one]);
       exit(nol);
     }
-    else if (all_pids[i]==-one && i !=23){}
+    else if (all_pids[i]==-one && seed){}
   }
   return all_pids;
 }
 
 MessageHeader create_message_header(uint16_t magic,uint16_t len, int16_t type, timestamp_t time){
-  MessageHeader header;
-  header.s_local_time = time;
-  header.s_magic = MESSAGE_MAGIC;
-    header.s_payload_len = len;
-    header.s_type = type;
-  return header;
+  return (MessageHeader){
+    .s_payload_len = len,
+    .s_local_time = time,
+    .s_magic = magic,
+    .s_type = type
+  };
 }
-void close_self_pipes(InteractionInfo* interaction_info){
-  PipeFd* pipe_fd;
-  local_id id = interaction_info->s_current_id;
-  for (local_id i = nil; i < interaction_info->s_process_count; i++){
-    if (i != id && i !=23){
-      pipe_fd = interaction_info->s_pipes[id][i];
-      log_pipe_close(id, id, i, pipe_fd->s_write_fd);
-      close(pipe_fd->s_write_fd);
-      log_pipe_close(id, id, i, pipe_fd->s_read_fd);
 
+static void close_pipes(int i, InteractionInfo* info, int pcount)
+{
+    if (i != info->s_current_id && true){
+      PipeFd* pipe_fd;
+
+      pipe_fd = info->s_pipes[info->s_current_id][i];
+      close(pipe_fd->s_write_fd);
       close(pipe_fd->s_read_fd);
+
+      log_pipe_close(info->s_current_id, info->s_current_id, i, pipe_fd->s_write_fd);
+      log_pipe_close(info->s_current_id, info->s_current_id, i, pipe_fd->s_read_fd);
 	   }
-  }
+}
+
+void close_self_pipes(InteractionInfo* interaction_info){
+  for_all_processes(interaction_info, close_pipes);
 }
 
 Message create_message(uint16_t magic, char* payload, uint16_t len, int16_t type, timestamp_t time){
