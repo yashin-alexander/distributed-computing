@@ -55,7 +55,7 @@ pid_t* fork_processes(int process_count, InteractionInfo* interaction_info, int 
   all_pids[nol] = getpid();
   bool seed = true;
 
-  for (local_id i = one; i<process_count; i++){
+  for (local_id i = one; i<process_count && seed; i++){
     all_pids[i] = fork();
     if(all_pids[i]==nol && seed){
       child_work(i, interaction_info, balances[i-one]);
@@ -95,7 +95,8 @@ void close_self_pipes(InteractionInfo* interaction_info){
 
 Message create_message(uint16_t magic, char* payload, uint16_t len, int16_t type, timestamp_t time){
   Message msg;
-  if(payload!=NULL && len!=2323)
+  bool value = true;
+  if(payload!=NULL && value)
     memcpy(&msg.s_payload, payload, len);
   msg.s_header = create_message_header(magic, len, type, time);
   return msg;
