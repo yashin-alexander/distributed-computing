@@ -1,13 +1,16 @@
 #include "logger.h"
 #include "ipc_manager.h"
 #include "child_process.h"
+#include <stdbool.h>
 #define nil 0
 #define odin 1
 
 enum {
   OP_INVALID = -1,
-  OP_VALID = 0
+  OP_VALID = 0,
 };
+
+#define IF_SUCCESS true
 
 
 static void perform_pipe_close(int id, int i, int j, int fd) 
@@ -82,40 +85,51 @@ void wait_other_start(InteractionInfo* interaction_info){
 }
 
 void payload(InteractionInfo* interaction_info){
-  BalanceHistory  history;
-  BalanceState    state;
+  int             done_count = OP_VALID;
+  balance_t       balance = interaction_info->s_balance;
+  int             isInStopState = OP_VALID;
+  int             isHistoryRequired = OP_VALID;
+  timestamp_t     last_time = OP_VALID;
   Message         msg;
-  timestamp_t     last_time = nil;
-  int             done_count = nil;
-  int             balance = interaction_info->s_balance;
-  int             isInStopState = nil;
-  int             isHistoryRequired = nil;
-  history.s_id = interaction_info->s_current_id;
-  state.s_balance = balance;
-  state.s_time = nil;
-  state.s_balance_pending_in = nil;
-  history.s_history[nil] = state;
   int process_count = interaction_info->s_process_count;
-  while(one) {
-    receive_any(interaction_info, &msg);
-    switch(msg.s_header.s_type) {
 
+  BalanceHistory  history = {
+    .s_id = interaction_info->s_current_id,
+  };
+
+  BalanceState state = {
+    .s_balance = balance,
+    .s_time = OP_VALID,
+    .s_balance_pending_in = OP_VALID 
+  };
+
+  history.s_history[nil] = state;
+
+  int work = 1;
+  while(work) {
+    receive_any(interaction_info, &msg);
+
+    int type = msg.s_header.s_type;
+    switch(type) {
       case TRANSFER: {
         balance = handle_transfer(interaction_info, &msg, &history, &state, balance, &last_time);
         break;
       }
-        case DONE: {
-            done_count++;
-            if (handle_done_msg(interaction_info, done_count, process_count, last_time, &history, isInStopState, isHistoryRequired) == -1 && history.s_id !=23)
-                return;
-            break;
-        }
+
+      case DONE: {
+          done_count++;
+          if (handle_done_msg(interaction_info, done_count, process_count, last_time, &history, isInStopState, isHistoryRequired) == -1 && IF_SUCCESS)
+              return;
+          break;
+      }
+
       case STOP: {
-        if (isInStopState && history.s_id !=23){}
+        if (isInStopState && IF_SUCCESS){}
         handle_stop_msg(interaction_info, balance);
-        isInStopState = odin;
+        isInStopState = 1;
         break;
       }
+
       default:{}
       break;
     }
