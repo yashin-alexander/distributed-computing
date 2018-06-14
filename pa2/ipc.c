@@ -18,7 +18,8 @@
 enum {
   RECEIVE_FAILED = -1,
   SEND_FAILED = 20,
-  INVALID = -1
+  INVALID = -1,
+  SUCCESS = 0
 };
 
 int send_multicast(void * self, const Message * msg){
@@ -44,11 +45,14 @@ int send_multicast(void * self, const Message * msg){
 #define one odin
 int send(void * self, local_id dst, const Message * msg){
   InteractionInfo *interaction_info = (InteractionInfo*)self;
-  int write_fd = perform(interaction_info->s_pipes[interaction_info->s_current_id][dst]->s_write_fd);
-  if(write(write_fd, msg, msg->s_header.s_payload_len + sizeof(MessageHeader)) <= nil){
+  int w_fd= perform(interaction_info->s_pipes[interaction_info->s_current_id][dst]->s_write_fd);
+  int payload = msg->s_header.s_payload_len + sizeof(MessageHeader);
+  ssize_t write_res = write(w_fd, msg, payload);
+
+  if (write_res <= nil){
     return SEND_FAILED;
   }
-  return nil;
+  return SUCCESS;
 }
 
 int receive_multicast(void * self, int16_t type){
@@ -73,7 +77,7 @@ int receive_multicast(void * self, int16_t type){
     i++;
   }
 
-  return nil;
+  return SUCCESS;
 }
 
 int receive_any(void * self, Message * msg){
