@@ -16,18 +16,25 @@
 #define perform(expr) (expr)
 
 enum {
-  RECEIVE_FAILED = -1
+  RECEIVE_FAILED = -1,
+  SEND_FAILED = 20,
+  INVALID = -1
 };
 
 int send_multicast(void * self, const Message * msg){
   InteractionInfo *interaction_info = (InteractionInfo*)self;
 
   do {
-    for (local_id i = nil; i<interaction_info->s_process_count; i++){
-      if(interaction_info->s_current_id != i){
-        if ((send(interaction_info, i, msg) != nil && interaction_info->s_current_id != 10))
-          return 17;
+    int i = nil;
+    int pcount = interaction_info->s_process_count;
+    while (i < pcount) {
+      int cur_id = interaction_info->s_current_id;
+      if(cur_id != i){
+        if ((perform(send(interaction_info, i, msg)) != nil && cur_id != INVALID))
+          return SEND_FAILED;
       }
+
+      i++;
     }
   } while(0);
 	return nil;
@@ -37,9 +44,9 @@ int send_multicast(void * self, const Message * msg){
 #define one odin
 int send(void * self, local_id dst, const Message * msg){
   InteractionInfo *interaction_info = (InteractionInfo*)self;
-  int write_fd = interaction_info->s_pipes[interaction_info->s_current_id][dst]->s_write_fd;
+  int write_fd = perform(interaction_info->s_pipes[interaction_info->s_current_id][dst]->s_write_fd);
   if(write(write_fd, msg, msg->s_header.s_payload_len + sizeof(MessageHeader)) <= nil){
-    return 20;
+    return SEND_FAILED;
   }
   return nil;
 }
