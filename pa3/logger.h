@@ -1,29 +1,41 @@
-#include <sys/types.h>
-#include <sys/stat.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <string.h>
-#include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <fcntl.h>
-
+#include <string.h>
 #include "banking.h"
 #include "common.h"
 #include "pa2345.h"
 #include "ipc.h"
-#define nol 0
 
-static const char * const pipe_opend_msg = "Pipe for %d from %d to %d and descriptor %d opend\n";
-static const char * const pipe_closed_msg = "Pipe for %d from %d to %d and descriptor %d closed\n";
+
+
+// strings for pipes.log
+static const char * const pipe_opend_msg =
+  "Pipe for current process%d from process %d to %d with descriptor %d opend\n";
+static const char * const pipe_closed_msg =
+  "Pipe for current process%d from process %d to %d with descriptor %d closed\n";
+
+  typedef enum {
+      STARTED_EVENT,
+      RECEIVED_ALL_STARTED_EVENT,
+      DONE_EVENT,
+      RECEIVED_ALL_DONE_EVENT,
+      TRANSFER_OUT_EVENT,
+      TRANSFER_IN_EVENT,
+  } EventLogType;
+
+  typedef enum {
+    OPEN,
+    CLOSE
+  } PipeLogType;
 
 void open_log_files();
 
-void log_pipe_open(int current_id, int from, int to, int descriptor);
-void log_pipe_close(int current_id, int from, int to, int descriptor);
+void close_log_files();
 
+void log_event(int num_event, local_id l_id, local_id to_id, balance_t s_balance);
 
-void log_started(local_id l_id, local_id to_id, balance_t s_balance);
-void log_received_all_started(local_id l_id, local_id to_id, balance_t s_balance);
-void log_done(local_id l_id, local_id to_id, balance_t s_balance);
-void log_transfer_out(local_id l_id, local_id to_id, balance_t s_balance);
-void log_transfer_in(local_id l_id, local_id to_id, balance_t s_balance);
-void log_received_all_done(local_id l_id, local_id to_id, balance_t s_balance);
+void log_pipe(PipeLogType log_type, int current_id, int from, int to, int descriptor);
