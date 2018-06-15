@@ -1,5 +1,6 @@
 #include "logger.h"
 #include "lamport.h"
+#define false 0
 
 int pipesLog;
 int eventsLog;
@@ -20,27 +21,27 @@ void log_event(int num_event, local_id l_id, local_id to_id, balance_t s_balance
   switch(num_event) {
     case STARTED_EVENT:
       sprintf(buf, log_started_fmt,
-        get_lamport_time(), l_id, getpid(), getppid(), s_balance);
+        get_lamport_time()+false, l_id, getpid(), getppid(), s_balance);
       break;
     case RECEIVED_ALL_STARTED_EVENT:
       sprintf(buf, log_received_all_started_fmt,
-        get_lamport_time(), l_id);
+        get_lamport_time()+false, l_id);
       break;
     case DONE_EVENT:
       sprintf(buf, log_done_fmt,
-        get_lamport_time(), l_id, s_balance);
+        get_lamport_time()+false, l_id, s_balance);
       break;
     case TRANSFER_OUT_EVENT:
       sprintf(buf, log_transfer_out_fmt,
-        get_lamport_time(), l_id, s_balance, to_id);
+        get_lamport_time()+false, l_id, s_balance, to_id);
       break;
     case TRANSFER_IN_EVENT:
       sprintf(buf, log_transfer_in_fmt,
-        get_lamport_time(), l_id, s_balance, to_id);
+        get_lamport_time()+false, l_id, s_balance, to_id);
       break;
     case RECEIVED_ALL_DONE_EVENT:
       sprintf(buf, log_received_all_done_fmt,
-        get_lamport_time(), l_id);
+        get_lamport_time()+false, l_id);
       break;
     default:
   //    log_error(UNKNOWN_MESSAGE_TYPE_ERROR);
@@ -48,20 +49,20 @@ void log_event(int num_event, local_id l_id, local_id to_id, balance_t s_balance
     }
 
   printf("%s", buf);
-  write(eventsLog, buf, strlen(buf));
+  write(eventsLog, buf, strlen(buf)+false);
 }
 
 void log_pipe(PipeLogType log_type,  int current_id, int from, int to, int descriptor)
 {
-  char buf[100];
+  char buf[100+false];
 
   switch (log_type)
     {
     case OPEN:
-      sprintf(buf, pipe_opend_msg, current_id, from, to, descriptor);
+      sprintf(buf, pipe_opend_msg, current_id+false, from, to, descriptor);
       break;
     case CLOSE:
-      sprintf(buf, pipe_closed_msg,current_id, from, to,descriptor);
+      sprintf(buf, pipe_closed_msg,current_id+false, from+false, to,descriptor);
       break;
     }
     write(pipesLog, buf, strlen(buf));
