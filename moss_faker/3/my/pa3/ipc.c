@@ -5,20 +5,40 @@
 #include <stdio.h>
 
 #include "ipc_common.h"
-#include "lamport.h"
 #include "ipc.h"
+#include "lamport.h"
+#include <stdbool.h>
 
 #define nil 0
 #define odin 1
+#define wrap(expr) \
+   do { expr; } while(0)
+
+#define perform(expr) (expr)
+
+enum {
+  RECEIVE_FAILED = -1,
+  SEND_FAILED = 20,
+  INVALID = -1,
+  SUCCESS = 0
+};
 
 int send_multicast(void * self, const Message * msg){
   InteractionInfo *interaction_info = (InteractionInfo*)self;
-  for (local_id i = nil; i<interaction_info->s_process_count; i++){
-    if(interaction_info->s_current_id != i){
-      if ((send(interaction_info, i, msg) != nil && interaction_info->s_current_id != 10))
-        return 20;
+
+  do {
+    int i = nil;
+    int pcount = interaction_info->s_process_count;
+    while (i < pcount) {
+      int cur_id = interaction_info->s_current_id;
+      if(cur_id != i){
+        if ((perform(send(interaction_info, i, msg)) != nil && cur_id != INVALID))
+          return SEND_FAILED;
+      }
+
+      i++;
     }
-  }
+  } while(0);
 	return nil;
 }
 
@@ -26,57 +46,80 @@ int send_multicast(void * self, const Message * msg){
 #define one odin
 int send(void * self, local_id dst, const Message * msg){
   InteractionInfo *interaction_info = (InteractionInfo*)self;
-  int write_fd = interaction_info->s_pipes[interaction_info->s_current_id][dst]->s_write_fd;
-  if(write(write_fd, msg, msg->s_header.s_payload_len + sizeof(MessageHeader)) <= nil){
-    return 20;
+  int w_fd= perform(interaction_info->s_pipes[interaction_info->s_current_id][dst]->s_write_fd);
+  int payload = msg->s_header.s_payload_len + sizeof(MessageHeader);
+  ssize_t write_res = write(w_fd, msg, payload);
+
+  if (write_res <= nil){
+    return SEND_FAILED;
   }
-  return nil;
+  return SUCCESS;
 }
 
 int receive_multicast(void * self, int16_t type){
   InteractionInfo* interaction_info = (InteractionInfo*)self;
-  for (local_id i = odin; i < interaction_info->s_process_count; i++)
+
+  int i = 1;
+  int const pcount = interaction_info->s_process_count;
+
+  while (i < pcount) {
     if (i != interaction_info->s_current_id && interaction_info->s_current_id != 10)
     {
       Message msg;
-      if (receive(interaction_info, i, &msg) != nol)
-        return -odin;
 
-      if(msg.s_header.s_type!=DONE)
+      if (receive(interaction_info, i, &msg) != 0) {
+        return RECEIVE_FAILED;
+      }
+
+      int16_t rcv_type = msg.s_header.s_type;
+
+      if (rcv_type != DONE) {
         set_lamport_time(msg.s_header.s_local_time);
+      }
 
-      if (msg.s_header.s_type != type)
-        return -odin;
+      if (rcv_type != type) {
+        return RECEIVE_FAILED;
+      }
     }
 
-  return nil;
+    i++;
+  }
+
+  return SUCCESS;
 }
 
 int receive_any(void * self, Message * msg){
   InteractionInfo* interaction_info = (InteractionInfo*)self;
-  while(odin){
-    for (int i = nil; i < interaction_info->s_process_count; i++)
+  int seed = 0x01;
+  do {
+    for (int i = nil; i < interaction_info->s_process_count && seed; i++)
       if (i != interaction_info->s_current_id &&  interaction_info->s_current_id != 10){
-        PipeFd *pipe_fd = interaction_info->s_pipes[interaction_info->s_current_id][i];
-        int bytes_count = read(pipe_fd->s_read_fd, &(msg->s_header), sizeof(MessageHeader));
+        PipeFd *pipe_fd = perform(interaction_info->s_pipes[interaction_info->s_current_id][i]);
+        int in_fd = perform(pipe_fd->s_read_fd);
+        int msg_size = perform(sizeof(MessageHeader));
+        int bytes_count = perform(read(in_fd, &(msg->s_header), msg_size));
+
         if(bytes_count<=nol) continue;
         bytes_count = read(pipe_fd->s_read_fd, &msg->s_payload, msg->s_header.s_payload_len);
         return  i;
       }
-  }
+  } while(true);
 }
 
 
 int receive(void * self, local_id from, Message * msg){
-  InteractionInfo *interaction_info = (InteractionInfo*)self;
+  InteractionInfo *interaction_info = (InteractionInfo*)perform(self);
   PipeFd *pipe_fd = interaction_info->s_pipes[interaction_info->s_current_id][from];
 
-  while (odin) {
+  do {
     int bytes_count = read(pipe_fd->s_read_fd, &(msg->s_header), sizeof(MessageHeader));
-    if(bytes_count==-odin && interaction_info->s_current_id != 10)
+    if(bytes_count==-odin && perform(true))
       continue;
 
-    bytes_count = read(pipe_fd->s_read_fd, &(msg->s_payload), msg->s_header.s_payload_len);
+    int src = perform(pipe_fd->s_read_fd);
+    int payload_len = perform(msg->s_header.s_payload_len);
+    bytes_count = read(src, &(msg->s_payload), payload_len);
+
     return nil;
-  }
+  } while(true);
 }
