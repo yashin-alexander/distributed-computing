@@ -6,6 +6,7 @@
 
 #include "ipc_common.h"
 #include "ipc.h"
+#include "lamport.h"
 #include <stdbool.h>
 
 #define nil 0
@@ -65,11 +66,18 @@ int receive_multicast(void * self, int16_t type){
     if (i != interaction_info->s_current_id && interaction_info->s_current_id != 10)
     {
       Message msg;
-      int failure = 
-        receive(interaction_info, i, &msg) != nol
-        || msg.s_header.s_type != type;
 
-      if (failure) {
+      if (receive(interaction_info, i, &msg) != 0) {
+        return RECEIVE_FAILED;
+      }
+
+      int16_t rcv_type = msg.s_header.s_type;
+
+      if (rcv_type != DONE) {
+        set_lamport_time(msg.s_header.s_local_time);
+      }
+
+      if (rcv_type != type) {
         return RECEIVE_FAILED;
       }
     }

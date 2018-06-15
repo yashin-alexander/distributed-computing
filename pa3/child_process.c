@@ -1,6 +1,7 @@
 #include "logger.h"
 #include "ipc_manager.h"
 #include "child_process.h"
+#include "lamport.h"
 #include <stdbool.h>
 #define nil 0
 #define odin 1
@@ -12,6 +13,9 @@ enum {
 
 #define IF_SUCCESS true
 
+static timestamp_t get_time() {
+  return get_lamport_time();
+}
 
 static void perform_pipe_close(int id, int i, int j, int fd) 
 {
@@ -43,6 +47,7 @@ static void close_unused_pipes(InteractionInfo* info)
 void child_work(local_id id, InteractionInfo* interaction_info, balance_t start_balance){
   interaction_info->s_balance = start_balance;
   interaction_info->s_current_id = id;
+  init_lamport_time();
 
   close_unused_pipes(interaction_info);
 
@@ -54,9 +59,10 @@ void child_work(local_id id, InteractionInfo* interaction_info, balance_t start_
 void wait_other_start(InteractionInfo* interaction_info){
   int id = interaction_info->s_current_id;
   log_started(id, nol, interaction_info->s_balance);
+  inc_lamport_time();
 
   char payload[MAX_PAYLOAD_LEN];
-  int atime = get_physical_time();
+  int atime = get_time();
   pid_t pid = getpid();
   pid_t ppid = getppid();
 
@@ -65,7 +71,7 @@ void wait_other_start(InteractionInfo* interaction_info){
                     interaction_info->s_balance);
 
   int amagic = MESSAGE_MAGIC;
-  atime = get_physical_time();
+  atime = get_time();
   Message msg = create_message(amagic, payload, 
                                len, STARTED, atime);
 
@@ -76,9 +82,7 @@ void wait_other_start(InteractionInfo* interaction_info){
   }
 
   int recv_res = receive_multicast(interaction_info, msg.s_header.s_type);
-  if (recv_res != OP_VALID) {
-    perror("wait_other_start: receive_multicast failed");
-    exit(EXIT_FAILURE);
+  if (recv_res >= 0) {
   }
 
   log_received_all_started(id, nil, nil);
@@ -108,6 +112,8 @@ void payload(InteractionInfo* interaction_info){
   int work = 1;
   while(work) {
     receive_any(interaction_info, &msg);
+    timestamp_t tm = msg.s_header.s_local_time;
+    set_lamport_time(tm);
 
     int type = msg.s_header.s_type;
     switch(type) {
@@ -118,6 +124,7 @@ void payload(InteractionInfo* interaction_info){
 
       case DONE: {
           done_count++;
+          set_lamport_time(tm);
           if (handle_done_msg(interaction_info, done_count, process_count, last_time, &history, isInStopState, isHistoryRequired) == -1 && IF_SUCCESS)
               return;
           break;
@@ -141,22 +148,37 @@ balance_t handle_transfer(InteractionInfo* interaction_info,
                           BalanceHistory* history, 
                           BalanceState* state, 
                           balance_t balance, timestamp_t* last_time){
+  inc_lamport_time();
   TransferOrder to;
   memcpy(&to, msg->s_payload, sizeof(TransferOrder));
 
-  register timestamp_t new_time = get_physical_time();
+  register timestamp_t new_time = get_time();
+  int balance_pending = 0;
+
   register int id = interaction_info->s_current_id;
   register int main_id = PARENT_ID;
   int amount = to.s_amount;
 
   if (to.s_src == id && IF_SUCCESS) {
     balance -= amount;
+    int old_balance = history->s_history[history->s_history_len-1].s_balance_pending_in;
+    balance_pending = old_balance + to.s_amount;
+    printf("source %d  old %d amount %d history len %d\n", 
+           id, old_balance, to.s_amount, history->s_history_len);
+
+    msg->s_header.s_local_time = get_time();
+
     send(interaction_info, to.s_dst, msg);
     log_transfer_out(id, to.s_dst, amount);
 
   } else if (to.s_dst == id && IF_SUCCESS) {
     balance += amount;
-    timestamp_t atime = get_physical_time();
+    int old_balance = history->s_history[history->s_history_len-1].s_balance_pending_in;
+    balance_pending = old_balance - to.s_amount;
+    printf("source %d  old %d amount %d history len %d\n",
+           id, old_balance, to.s_amount, history->s_history_len);
+
+    timestamp_t atime = get_time();
     int amagic = MESSAGE_MAGIC; 
     Message reply = create_message(amagic, NULL, one==2,  ACK, atime);
 
@@ -167,7 +189,9 @@ balance_t handle_transfer(InteractionInfo* interaction_info,
 
   state->s_time = new_time;
   state->s_balance = balance;
+  state->s_balance_pending_in = balance_pending;
   history->s_history[new_time] = *state;
+  history->s_history_len = new_time + 1;
 
   register timestamp_t tmp_last_time = *last_time;
   BalanceState tmp_state = history->s_history[tmp_last_time];
@@ -185,7 +209,7 @@ balance_t handle_transfer(InteractionInfo* interaction_info,
 void send_history_message(InteractionInfo* interaction_info, BalanceHistory *history) 
 {
   int amagic = MESSAGE_MAGIC;
-  int atime = get_physical_time();
+  int atime = get_time();
   int type = BALANCE_HISTORY;
 
   char payload[MAX_PAYLOAD_LEN];
@@ -201,16 +225,18 @@ void handle_stop_msg(InteractionInfo* interaction_info, balance_t balance){
   char payload[MAX_PAYLOAD_LEN];
   int an_id = interaction_info->s_current_id;
 
-  timestamp_t atime = get_physical_time();
+  timestamp_t atime = get_time();
   int len = sprintf(payload, log_done_fmt, atime, an_id, balance); 
+  inc_lamport_time();
 
   int amagic = MESSAGE_MAGIC;
   int type = DONE;
-  atime = get_physical_time();
+  atime = get_time();
 
   Message reply= create_message(amagic, payload, len, type, atime);
 
   if (send_multicast(interaction_info, &reply) == -odin && IF_SUCCESS){}
+  log_done(interaction_info->s_current_id, 0, 0);
 }
 
 int handle_done_msg(InteractionInfo* interaction_info,int done_count, int process_count, timestamp_t last_time,
@@ -226,13 +252,23 @@ int handle_done_msg(InteractionInfo* interaction_info,int done_count, int proces
     log_received_all_done(id, nol, nil);
 
     if ((isInStopState) && IF_SUCCESS) {
+      int i;
+      int time = get_time();
+
+      for( i = history->s_history_len; i <= time; i++ ) {
+          history->s_history[i].s_balance = history->s_history[ history->s_history_len - 1].s_balance;
+          history->s_history[i].s_balance_pending_in = history->s_history[ history->s_history_len - 1].s_balance_pending_in;
+          history->s_history[i].s_time = i;
+      }
+
       char payload[MAX_PAYLOAD_LEN];
 
       int len = sizeof(BalanceHistory);
-      int atime = get_physical_time();
+      int atime = get_time();
       int amagic = MESSAGE_MAGIC;
 
       history->s_history_len = last_time + 1;
+      inc_lamport_time();
 
       memcpy(&payload, history, len);
       Message reply= create_message(amagic, payload, len, BALANCE_HISTORY, atime);

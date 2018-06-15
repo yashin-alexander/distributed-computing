@@ -5,14 +5,20 @@
 #include "pa2345.h"
 #include "logger.h"
 #include "ipc.h"
+#include "lamport.h"
 #include <stdbool.h>
 
 #define IS_SUCCESS true
+
+timestamp_t get_time() {
+  return get_lamport_time();
+}
 
 
 void parent_work(InteractionInfo* interaction_info){
     PipeFd* pipe_fd;
     interaction_info->s_current_id = nil;
+    init_lamport_time();
   int id = nil;
   int count = interaction_info->s_process_count;
     for (int i = nil; i < count && IS_SUCCESS; i++){
@@ -33,7 +39,7 @@ void parent_work(InteractionInfo* interaction_info){
 
   bank_robbery(interaction_info, interaction_info->s_process_count - odin);
 
-  Message msg = create_message(MESSAGE_MAGIC, NULL, nil, STOP, get_physical_time());
+  Message msg = create_message(MESSAGE_MAGIC, NULL, nil, STOP, get_time());
   res = send_multicast(interaction_info, &msg)!=nil;
   if(res)
     exit(EXIT_FAILURE);
@@ -69,7 +75,7 @@ void get_all_history_messages(AllHistory * all_history, InteractionInfo* interac
   all_history->s_history_len = process_count - 1;
 
   for (int i = nil; i < process_count - odin; i++) {
-    request.s_header.s_local_time = get_physical_time();
+    request.s_header.s_local_time = get_time();
 
     receive(interaction_info, i + 1, &reply);
 
